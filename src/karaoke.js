@@ -67,8 +67,8 @@ export const KARAOKE_CSS = `
 #caption .k-line:empty { display: none; }
 #caption .k-line.k-in { animation: kin 0.25s ease-out; }
 @keyframes kin { from { opacity: 0; transform: translateY(10px) scale(0.97); } }
-#caption .k-w { --p: 0%; display: inline-block; color: transparent; background: linear-gradient(90deg, #ffd23f var(--p), #ffffff var(--p)); -webkit-background-clip: text; background-clip: text; -webkit-text-stroke: 1.5px rgba(43, 24, 64, 0.55); transition: transform 0.12s; }
-#caption .k-w.k-now { transform: translateY(-3px) scale(1.06); filter: drop-shadow(0 0 10px rgba(255, 210, 63, 0.75)); }
+#caption .k-w { --p: 0%; display: inline-block; color: transparent; background: linear-gradient(90deg, #ffd23f var(--p), #ffffff var(--p)); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 2px 0 rgba(20, 10, 35, 0.85)) drop-shadow(0 0 6px rgba(0, 0, 0, 0.35)); transition: transform 0.12s; }
+#caption .k-w.k-now { transform: translateY(-3px) scale(1.06); filter: drop-shadow(0 2px 0 rgba(20, 10, 35, 0.85)) drop-shadow(0 0 10px rgba(255, 210, 63, 0.75)); }
 #caption .k-w.k-done { background: #ffd23f; -webkit-background-clip: text; background-clip: text; }
 #caption .k-next { margin-top: 6px; font-size: 22px; font-weight: 600; color: rgba(255, 255, 255, 0.72); text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6); }
 `;

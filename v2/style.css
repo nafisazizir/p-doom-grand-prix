@@ -190,3 +190,9 @@ body.photo #game { cursor: grab; }
 body.photo #game:active { cursor: grabbing; }
 /* darker glass HUD panels (white frosted glass read as wash-out) */
 #pdoom-box, #score-box { background: linear-gradient(160deg, rgba(30,16,52,0.55), rgba(20,10,35,0.35)) !important; border-color: rgba(255,255,255,0.18) !important; box-shadow: 0 8px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.15) !important; }
+/* variable-font outlines show internal contour overlaps when the fill is a transparent gradient:
+   use stacked drop-shadows as the outline instead of -webkit-text-stroke */
+#pdoom, #combo, #place { -webkit-text-stroke: 0 !important; }
+#pdoom { filter: drop-shadow(2px 0 0 #2b1840) drop-shadow(-2px 0 0 #2b1840) drop-shadow(0 2px 0 #2b1840) drop-shadow(0 -2px 0 #2b1840) drop-shadow(0 5px 0 #2b1840) !important; }
+#combo { filter: drop-shadow(2px 0 0 #2b1840) drop-shadow(-2px 0 0 #2b1840) drop-shadow(0 2px 0 #2b1840) drop-shadow(0 -2px 0 #2b1840) drop-shadow(0 4px 0 #2b1840) !important; }
+#place { filter: drop-shadow(3px 0 0 #2b1840) drop-shadow(-3px 0 0 #2b1840) drop-shadow(0 3px 0 #2b1840) drop-shadow(0 -3px 0 #2b1840) drop-shadow(0 6px 0 #2b1840); text-shadow: none !important; }
