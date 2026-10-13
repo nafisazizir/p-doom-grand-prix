@@ -52,7 +52,7 @@ function embedCluster(variant) {
     head.position.set(tip[0] * 1.09, tip[1] * 1.09, tip[2] * 1.09);
     inner.add(head);
   }
-  const lbl = textPanel(LABELS[variant % LABELS.length], { width: 6.4, height: 1.0, bg: null, fg: '#ffffff', stroke: '#7a1d8f', strokeW: 12 });
+  const lbl = textPanel(LABELS[variant % LABELS.length], { width: 8, height: 1.4, bg: null, fg: '#ffffff', stroke: '#7a1d8f', strokeW: 14 });
   lbl.position.set(0, 8.3, 0);
   g.add(lbl);
   g.userData.inner = inner;
@@ -75,14 +75,16 @@ function moon(dir) {
   }
   // face: one happy eye, one eye with a rocket in it, a big grin
   const ink = toon('#2b1840', { outline: false });
-  const eye = mesh(G.sphere(0.9, 12), ink, X(3.4), C[1] + 2.6, 9.3);
+  const onFace = (x, y, lift = 0.1) => Math.sqrt(Math.max(0, 100 - x * x - y * y)) + lift;
+  const eye = mesh(G.sphere(0.9, 12), ink, X(3.4), C[1] + 2.6, onFace(3.4, 2.6, 0));
   eye.scale.set(1, 1.3, 0.4);
   g.add(eye);
   for (let i = 0; i <= 8; i++) {
     const a = -Math.PI * 0.85 + (i / 8) * Math.PI * 0.7;
-    g.add(mesh(G.sphere(0.5, 8), ink, X(Math.cos(a) * 4.6), C[1] + 1.2 + Math.sin(a) * 4.6, 9.05 - Math.abs(Math.cos(a)) * 1.2));
+    const sx = Math.cos(a) * 4.6, sy = 1.2 + Math.sin(a) * 4.6;
+    g.add(mesh(G.sphere(0.5, 8), ink, X(sx), C[1] + sy, onFace(sx, sy, -0.1)));
   }
-  g.add(mesh(G.sphere(1.1, 10), toon('#ff9fb4', { outline: false }), X(5.6), C[1] - 1.2, 8.1));
+  g.add(mesh(G.sphere(1.1, 10), toon('#ff9fb4', { outline: false }), X(6), C[1] - 1.2, onFace(6, -1.2, -0.7)));
   // the chart: up and to the moon
   const pts = [[-30, 0.4, 6], [-27.5, 4.2, 6.4], [-25.5, 2.6, 6.8], [-22.5, 9, 7.2], [-20.5, 7, 7.6], [-17.5, 15, 8], [-15.5, 13, 8.4], [-12.5, 22, 8.8], [-10.5, 20.4, 9.2], [-7.4, 30, 10.4]];
   const line = glow(LIME);
@@ -315,8 +317,8 @@ export default {
   layout(zf, rng, sec) {
     const out = [];
     const rel = zf - sec.start * 30;
-    if (rel >= 110 && rel < 120) out.push({ kind: 'moonR', x: 44 });
-    if (rel >= 330 && rel < 340) out.push({ kind: 'moonL', x: -44 });
+    if (rel >= 110 && rel < 120) out.push({ kind: 'moonR', x: 48, rotY: -0.5, scale: 1.25 });
+    if (rel >= 330 && rel < 340) out.push({ kind: 'moonL', x: -48, rotY: 0.5, scale: 1.25 });
     if ((rel >= 60 && rel < 70) || (rel >= 260 && rel < 270)) out.push({ kind: 'omega', x: 0 });
     for (const side of [-1, 1]) {
       const r = rng();

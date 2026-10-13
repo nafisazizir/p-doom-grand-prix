@@ -17,14 +17,17 @@ import { debug } from './debug.js';
 import { clamp, lerp } from './toolkit.js';
 
 // ---------------- tuning ----------------
+// P(doom) = sigmoid(doomX). doomX starts at 0 (= 0.50) and is unbounded, so the meter eases towards 0/1.
+// Near 0.50 one GPU ≈ −0.004 and one miss ≈ +0.006, as in the spec. Tuned by simulation:
+// ~97% accuracy ends ≈ 0.04, 90% ≈ 0.08, 80% ≈ 0.3, 65% ≈ 0.8, 50% ≈ 0.97 (boost doubles GPUs, not doom).
 export const TUNE = {
-  start: 0.5,
-  collect: -0.0045,
-  miss: 0.006,
-  hazard: 0.03,
-  drift: 0.0018, // P(doom) creeps up by itself every second: the world keeps scaling
-  chain: -0.03,
-  flawless: -0.05,
+  start: 0,
+  collect: -0.016,
+  miss: 0.02,
+  hazard: 0.15,
+  drift: 0.01, // P(doom) creeps up by itself every second: the world keeps scaling
+  chain: -0.15,
+  flawless: -0.25,
   nearMissGpu: 1,
   hitNote: 0.2, // lateral hit window (normalized)
   hitRing: 0.2,
@@ -52,7 +55,7 @@ let lowFpsTime = 0;
 const camState = { x: 0, y: 3, z: 0, fov: 70, shake: 0, back: 7.5, height: 3.4 };
 
 const G = (globalThis.GAME = {
-  pDoom: TUNE.start, gpus: 0, combo: 0, maxCombo: 0, hits: 0, misses: 0, hazardsHit: 0, ringsHit: 0, chains: 0, flawless: 0, nearMisses: 0, shieldsUsed: 0,
+  doomX: TUNE.start, pDoom: 0.5, gpus: 0, combo: 0, maxCombo: 0, hits: 0, misses: 0, hazardsHit: 0, ringsHit: 0, chains: 0, flawless: 0, nearMisses: 0, shieldsUsed: 0,
   kartX: 0, kartVel: 0, bounceV: 0, steer: 0, songTime: 0, prevTime: 0,
   boostUntil: -1, boostStart: -9, boostCooldownUntil: -1,
   power: null, powerUntil: 0, powerStart: 0,
@@ -189,7 +192,7 @@ function updateCalibrate(dt) {
 // ---------------- race lifecycle ----------------
 function resetGame() {
   Object.assign(G, {
-    pDoom: TUNE.start, gpus: 0, combo: 0, maxCombo: 0, hits: 0, misses: 0, hazardsHit: 0, ringsHit: 0, chains: 0, flawless: 0, nearMisses: 0, shieldsUsed: 0,
+    doomX: TUNE.start, pDoom: 0.5, gpus: 0, combo: 0, maxCombo: 0, hits: 0, misses: 0, hazardsHit: 0, ringsHit: 0, chains: 0, flawless: 0, nearMisses: 0, shieldsUsed: 0,
     kartX: 0, kartVel: 0, bounceV: 0, steer: 0, boostUntil: -1, boostStart: -9, boostCooldownUntil: -1,
     power: null, powerUntil: 0, spinUntil: -1, hurtUntil: -1, sectionIdx: -1, sectionMisses: 0, tier: 0, cooked: false,
     launchAt: Infinity, launched: false, finished: false, bonus: [],
@@ -369,7 +372,8 @@ function computeRain() {
 function addDoom(d) {
   if (G.god) return;
   const before = G.pDoom;
-  G.pDoom = clamp(G.pDoom + d, 0, 1);
+  G.doomX = clamp(G.doomX + d, -8, 8);
+  G.pDoom = 1 / (1 + Math.exp(-G.doomX));
   if (before <= 0.8 && G.pDoom > 0.8 && !G.cooked) {
     G.cooked = true;
     hud.announce('WE ARE SO COOKED');
@@ -420,7 +424,7 @@ function collect(n, t) {
   G.combo++;
   G.hits += n.rain ? 0 : 1;
   G.maxCombo = Math.max(G.maxCombo, G.combo);
-  addDoom(TUNE.collect * v);
+  addDoom(TUNE.collect);
   sfx.play('pickup', { step: G.combo - 1 });
   hud.popup(`+${v} GPU`, sx, sy, v > 1 ? 'gold' : '');
   particles.burst(track.worldPos(zf, n.flyX ?? n.x, 1.2, tmpV), ['#7cffb0', '#ffd23f', '#ffffff'], 14, { speed: 7, carry: 24 });
@@ -540,6 +544,25 @@ function hitPower(p, t) {
   if (p.type === 'shield') hud.announce('SAFETY TEAM: ON BOARD', 1300);
 }
 
+// ---------------- autopilot (testing / attract / backup recording) ----------------
+let autopilot = params.has('autopilot');
+function autoSteer(t) {
+  const notes = level.notes;
+  let target = 0;
+  let n = null;
+  for (let i = G.cursors.note; i < notes.length; i++) { if (notes[i].t > t - 0.01) { n = notes[i]; break; } }
+  const r = level.rings[G.cursors.ring];
+  if (n) target = n.flyX ?? n.x;
+  if (r && (!n || r.t <= n.t + 0.01)) target = r.x;
+  const h = level.hazards[G.cursors.hazard];
+  if (h && (!n || h.t < n.t) && h.t - t < 0.6) {
+    const half = h.w / 2 + TUNE.kartHalf + 0.08;
+    if (Math.abs(target - h.x) < half) target = h.x + (target >= h.x ? half : -half);
+    if (Math.abs(target) > 1) target = h.x - Math.sign(target) * half;
+  }
+  return clamp((target - G.kartX) * 6, -1, 1);
+}
+
 // ---------------- race update ----------------
 function resolveItems(t, magnet) {
   const notes = level.notes;
@@ -609,7 +632,8 @@ function updateRace(dt) {
   hands.tick(dt);
 
   // steering
-  const steer = input.getSteer(dt, t);
+  let steer = input.getSteer(dt, t);
+  if (autopilot) steer = autoSteer(t);
   G.steer = steer;
   const spinning = t < G.spinUntil;
   const prevX = G.kartX;
@@ -726,19 +750,19 @@ function frame(now) {
     pos, heading, steerVel: mode === 'RACE' ? G.kartVel * 0.6 : 0, steerVis: G.steer, dt, t: now / 1000,
     boostK, spinT: t < G.spinUntil ? 1 : 0, scaleK, shield: G.power === 'shield', shades: G.combo >= 50, beatPhase, launchK,
   });
-  kart.body.rotation.x -= pitch;
+  kart.body.rotation.x += pitch;
 
   // trails
   if (mode === 'RACE' && !paused) {
     const back = track.worldPos(kartZ - 1.5, G.kartX, 0.7, tmpV);
     if (G.combo >= 25) {
       const hue = (now / 6) % 360;
-      particles.spawn(back, { x: (Math.random() - 0.5) * 2, y: 1, z: 6 }, new THREE.Color().setHSL(hue / 360, 0.9, 0.6), { life: 0.6, size: 0.35, grav: 0 });
+      particles.spawn(back, { x: (Math.random() - 0.5) * 1.5, y: 0.6, z: -22 }, new THREE.Color().setHSL(hue / 360, 0.9, 0.6), { life: 0.4, size: 0.22, grav: 0 });
     } else if (G.combo >= 10 && Math.random() < 0.6) {
-      particles.spawn(back, { x: (Math.random() - 0.5) * 3, y: 2, z: 5 }, Math.random() < 0.5 ? '#ffffff' : '#ffe680', { life: 0.5, size: 0.2, grav: -2 });
+      particles.spawn(back, { x: (Math.random() - 0.5) * 3, y: 1.5, z: -22 }, Math.random() < 0.5 ? '#ffffff' : '#ffe680', { life: 0.4, size: 0.16, grav: -2 });
     }
     if (boostK > 0.3) {
-      particles.spawn(back, { x: (Math.random() - 0.5) * 2, y: 0.5, z: 12 }, Math.random() < 0.5 ? '#4ad8ff' : '#ffffff', { life: 0.35, size: 0.3, grav: 0 });
+      particles.spawn(back, { x: (Math.random() - 0.5) * 2, y: 0.5, z: -18 }, Math.random() < 0.5 ? '#4ad8ff' : '#ffffff', { life: 0.3, size: 0.22, grav: 0 });
     }
   }
   particles.update(dt);
@@ -831,6 +855,7 @@ function onKey(code) {
   if (code === 'BracketLeft') { clock.latency -= 0.01; return; }
   if (code === 'BracketRight') { clock.latency += 0.01; return; }
   if (code === 'KeyO') { outlines = !outlines; return; }
+  if (code === 'KeyB') { autopilot = !autopilot; hud.announce(autopilot ? 'AUTOPILOT (unsupervised)' : 'HUMAN IN THE LOOP', 1000); return; }
   if (code === 'Escape') { toTitle(); return; }
   if (code === 'KeyR' && (mode === 'RACE' || mode === 'RESULTS')) { startRace({ webcam: G.webcam }); return; }
   if (code === 'KeyW' && (mode === 'RACE' || mode === 'COUNTDOWN')) {

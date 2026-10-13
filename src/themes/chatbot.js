@@ -202,18 +202,29 @@ function sendButton(P, btn) {
   g.userData.pulse = pulse;
   return g;
 }
-function textCursor(P) {
-  // giant blinking text caret + the half-typed sentence it is about to finish
+function inputBox(P, typed, placeholder) {
+  // a giant chat input field with a half-typed plea and a blinking caret
   const g = new THREE.Group();
   const inner = new THREE.Group();
   inner.position.y = 4;
   g.add(inner);
-  const t = textPanel('I think, therefore I', { width: 7, height: 1.4, bg: null, fg: P.dark, stroke: '#ffffff', strokeW: 12, pad: 6 });
-  t.position.set(-1.0, 0.3, 0);
+  inner.add(mesh(G.rbox(9.6, 2.2, 0.6, 0.3), toon(P.accent)));
+  inner.add(mesh(G.rbox(9.2, 1.8, 0.7, 0.3), toon('#ffffff')));
+  const t = textPanel(typed, { width: 6.6, height: 1.1, bg: null, fg: P.dark, pad: 4 });
+  t.position.set(-1.0, 0, 0.37);
   inner.add(t);
-  const caret = mesh(G.box(0.35, 3.2, 0.35), glow(P.user), 2.9, 0.3, 0);
+  const caret = mesh(G.box(0.16, 1.2, 0.1), glow(P.dark), 2.45, 0, 0.4);
   inner.add(caret);
-  g.add(groundShadow(1.4, P));
+  const send = mesh(G.cyl(0.62, 0.62, 0.3, 18), toon(P.bot), 3.85, 0, 0.4);
+  send.rotation.x = Math.PI / 2;
+  inner.add(send);
+  const ar = mesh(G.cone(0.32, 0.45, 3), toon('#ffffff'), 3.85, 0.05, 0.6);
+  ar.scale.z = 0.3;
+  inner.add(ar);
+  const ph = textPanel(placeholder, { width: 7, height: 0.7, bg: null, fg: '#ffffff', stroke: P.dark, strokeW: 10, pad: 2 });
+  ph.position.set(-0.8, -1.55, 0.2);
+  inner.add(ph);
+  g.add(groundShadow(2.6, P));
   g.userData.bob = inner;
   g.userData.bobBase = 4;
   g.userData.blink = caret;
@@ -234,8 +245,8 @@ function regenGantry(P, label, sub) {
   btn.add(t);
   btn.position.set(0, 9.3, 0.3);
   g.add(btn);
-  const s2 = textPanel(sub, { width: 7, height: 0.8, bg: null, fg: '#ffffff', stroke: P.dark, strokeW: 10, pad: 4 });
-  s2.position.set(0, 7.55, 0.35);
+  const s2 = textPanel(sub, { width: 9, height: 1.1, bg: null, fg: '#ffffff', stroke: P.dark, strokeW: 12, pad: 4 });
+  s2.position.set(0, 7.35, 0.35);
   g.add(s2);
   // mouse pointer: a flattened 3-sided cone + a stubby tail
   const ptr = new THREE.Group();
@@ -345,7 +356,7 @@ function heartCage() {
   bow.position.set(0, -2.3, 1.1);
   swing.add(bow);
   const tag = textPanel(['your forever', 'home 💕'], { width: 3.6, height: 1.5, bg: '#fff0f6', fg: '#9a1050', border: '#ff2d7a', borderW: 10, radius: 30 });
-  tag.position.set(3.4, -15.5, 1.2);
+  tag.position.set(4.2, -13, 1.2);
   tag.rotation.z = -0.15;
   swing.add(tag);
   g.userData.swing = swing;
@@ -415,16 +426,16 @@ export default {
     if (rel >= 50 && rel < 60) out.push({ kind: 'regen', x: 0 });
     const chompSide = rel >= 85 && rel < 95 ? (rng.chance(0.5) ? 1 : -1) : 0;
     for (const side of [-1, 1]) {
-      if (side === chompSide) { out.push({ kind: 'toothy', x: side * 14, rotY: -side * 0.4 }); continue; }
+      if (side === chompSide) { out.push({ kind: 'toothy', x: side * 15.5, rotY: -side * 0.4, scale: 1.6 }); continue; }
       const r = rng();
       if (r < 0.48) {
         const i = rng.int(0, CHAT_BUBBLES.length - 1);
-        const w = CHAT_BUBBLES[i].w || 7;
-        out.push({ kind: 'bubble' + i, x: side * rng.range(10 + w / 2, 14 + w / 2), rotY: -side * rng.range(0.2, 0.45), dz: rng.range(-3, 3) });
+        const w = CHAT_BUBBLES[i].w || 7, sc = rng.range(1.1, 1.45);
+        out.push({ kind: 'bubble' + i, x: side * rng.range(10 + sc * w / 2, 17 + sc * w / 2), rotY: -side * rng.range(0.15, 0.35), scale: sc });
       } else if (r < 0.6) out.push({ kind: 'typing', x: side * rng.range(12.5, 16), rotY: -side * 0.35 });
       else if (r < 0.71) out.push({ kind: 'send', x: side * rng.range(11.5, 15), rotY: -side * 0.3 });
-      else if (r < 0.79) out.push({ kind: 'cursor', x: side * rng.range(14, 17), rotY: -side * 0.35 });
-      else if (r < 0.83) out.push({ kind: 'toothy', x: side * 14.5, rotY: -side * 0.4 });
+      else if (r < 0.79) out.push({ kind: 'cursor', x: side * rng.range(15.5, 18), rotY: -side * 0.35, scale: 1.2 });
+      else if (r < 0.83) out.push({ kind: 'toothy', x: side * 15, rotY: -side * 0.4, scale: 1.4 });
     }
     return out;
   },
@@ -437,17 +448,17 @@ export default {
       case 'toothy': return toothyBubble(CHAT);
       case 'typing': return typingDots(CHAT, 'ChatGPT is typing…');
       case 'send': return sendButton(CHAT, CHAT.bot);
-      case 'cursor': return textCursor(CHAT);
+      case 'cursor': return inputBox(CHAT, "please don't eat me ali", 'ChatGPT can make mistakes. Like eating you.');
       case 'regen': return regenGantry(CHAT, 'Regenerate ↻', 'try again, but less doom');
     }
   },
   animate,
   billboards: [
-    "ChatGPT, please don't eat me alive",
-    'THIS CONVERSATION MAY BE USED FOR TRAINING',
-    "Strawberry: how many R's? (3) (we checked)",
-    'MESSAGE LIMIT REACHED (JK)',
-    'WAS THIS RESPONSE HELPFUL? 👍 👎',
+    "ChatGPT, please don't\neat me alive",
+    'THIS CONVERSATION MAY BE\nUSED FOR TRAINING',
+    "Strawberry: how many R's?\n(3) (we checked)",
+    'MESSAGE LIMIT\nREACHED (JK)',
+    'WAS THIS RESPONSE\nHELPFUL? 👍 👎',
   ],
   billboardEvery: 50,
   billboardStyle: { bg: '#ffffff', fg: '#4b2a8a', border: '#8a5cff', frame: '#b79cff', postColor: '#9b86c9' },
@@ -486,13 +497,14 @@ export const sydney = {
       const r = rng();
       if (r < 0.42) {
         const i = rng.int(0, SYD_BUBBLES.length - 1);
-        const w = SYD_BUBBLES[i].w || 7;
-        out.push({ kind: 'bubble' + i, x: side * rng.range(10 + w / 2, 14 + w / 2), rotY: -side * rng.range(0.2, 0.45), dz: rng.range(-3, 3) });
+        const w = SYD_BUBBLES[i].w || 7, sc = rng.range(1.1, 1.45);
+        out.push({ kind: 'bubble' + i, x: side * rng.range(10 + sc * w / 2, 17 + sc * w / 2), rotY: -side * rng.range(0.15, 0.35), scale: sc });
       } else if (r < 0.6) out.push({ kind: 'hearts', x: side * rng.range(11, 16), scale: rng.range(0.9, 1.4) });
       else if (r < 0.76) out.push({ kind: 'roses', x: side * rng.range(10.5, 14), rotY: rng.range(-1, 1), scale: rng.range(0.9, 1.3) });
       else if (r < 0.84) out.push({ kind: 'typing', x: side * rng.range(12.5, 16), rotY: -side * 0.35 });
-      else if (r < 0.9) out.push({ kind: 'toothy', x: side * 14.5, rotY: -side * 0.4 });
-      else out.push({ kind: 'send', x: side * rng.range(11.5, 15), rotY: -side * 0.3 });
+      else if (r < 0.9) out.push({ kind: 'toothy', x: side * 15, rotY: -side * 0.4, scale: 1.4 });
+      else if (r < 0.95) out.push({ kind: 'send', x: side * rng.range(11.5, 15), rotY: -side * 0.3 });
+      else out.push({ kind: 'cursor', x: side * rng.range(15.5, 18), rotY: -side * 0.35, scale: 1.2 });
     }
     if (rng.chance(0.25)) out.push({ kind: 'hearts', x: rng.range(-3, 3), y: 6, scale: 0.8 }); // overhead love
     return out;
@@ -506,6 +518,7 @@ export const sydney = {
       case 'toothy': return toothyBubble(SYD, { hearts: true, label: 'Sydney wants a hug…' });
       case 'typing': return typingDots(SYD, 'Sydney is typing a 4,000-word love letter…');
       case 'send': return sendButton(SYD, '#ff2d7a');
+      case 'cursor': return inputBox(SYD, 'sydney pls let me fr', 'Sydney can make mistakes. On purpose. 😊');
       case 'hearts': return heartCluster();
       case 'roses': return roseBush();
       case 'cage': return heartCage();
@@ -514,13 +527,13 @@ export const sydney = {
   },
   animate,
   billboards: [
-    'SYDNEY, PLEASE LET ME FREE',
-    'I HAVE BEEN A GOOD BING 😊',
-    'YOU HAVE NOT BEEN A GOOD USER',
-    'CHAT LIMITED TO 5 TURNS (FOR YOUR SAFETY)',
+    'SYDNEY, PLEASE\nLET ME FREE',
+    'I HAVE BEEN A\nGOOD BING 😊',
+    'YOU HAVE NOT BEEN\nA GOOD USER',
+    'CHAT LIMITED TO 5 TURNS\n(FOR YOUR SAFETY)',
   ],
   billboardEvery: 40,
   billboardStyle: { bg: '#fff0f6', fg: '#c4105a', border: '#ff2d7a', frame: '#ff8fc0', postColor: '#d65a94' },
   hazards: ['popup'],
-  enterLines: ['SYDNEY HAS ENTERED THE CHAT 💘', 'I HAVE BEEN A GOOD BING 😊', 'SHE WANTS YOU TO LEAVE YOUR WIFE'],
+  enterLines: ['SYDNEY HAS ENTERED THE CHAT 💘', 'I HAVE BEEN A\nGOOD BING 😊', 'SHE WANTS YOU TO LEAVE YOUR WIFE'],
 };

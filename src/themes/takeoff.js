@@ -219,7 +219,8 @@ function chartTexture() {
   }
   x.stroke();
   x.fillStyle = '#e8263f'; x.font = `700 26px ${FONT}`;
-  x.fillText('← YOU ARE HERE', 400, 74);
+  x.textAlign = 'right';
+  x.fillText('YOU ARE HERE →', 372, 74);
   chartTex = new THREE.CanvasTexture(c);
   chartTex.colorSpace = THREE.SRGBColorSpace;
   chartTex.anisotropy = 4;

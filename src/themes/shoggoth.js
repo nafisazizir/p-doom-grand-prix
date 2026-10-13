@@ -23,12 +23,11 @@ const STEM = '#f6ecff';
 const EYE_WHITE = toon('#ffffff', { emissive: '#ffffff', emissiveIntensity: 0.45 });
 const STEM_MAT = toon(STEM, { emissive: '#6a4a8a', emissiveIntensity: 0.6 });
 
-function mushroom(kind, r = 2.6, h = 4) {
+function mushroom(kind, r = 2.6, h = 4, nSpots = 5) {
   const c = CAPS[kind];
   const g = new THREE.Group();
   const stem = mesh(G.cyl(r * 0.22, r * 0.32, h, 12), STEM_MAT, 0, h / 2, 0);
   g.add(stem);
-  g.add(mesh(G.cyl(r * 0.3, r * 0.3, 0.3, 12), STEM_MAT, 0, h * 0.62, 0)); // little skirt ring
   const cap = new THREE.Group();
   cap.position.y = h;
   const dome = mesh(HEMI, capMats[kind]);
@@ -37,8 +36,8 @@ function mushroom(kind, r = 2.6, h = 4) {
   const gill = mesh(G.cyl(r * 0.98, r * 0.6, 0.35, 20), toon(c.gill), 0, -0.1, 0);
   cap.add(gill);
   // glowing spots on the dome
-  const spots = [[0, 1.25, 0.22], [0.9, 0.5, 0.2], [2.2, 0.75, 0.17], [3.5, 0.45, 0.2], [4.6, 0.9, 0.16], [5.6, 0.4, 0.18]];
-  for (const [az, el, sr] of spots) {
+  const spots = [[0, 1.25, 0.22], [0.9, 0.5, 0.2], [2.4, 0.75, 0.19], [3.8, 0.45, 0.2], [5.2, 0.8, 0.17]];
+  for (const [az, el, sr] of spots.slice(0, nSpots)) {
     const x = Math.cos(el) * Math.sin(az), y = Math.sin(el), z = Math.cos(el) * Math.cos(az);
     const s = mesh(G.sphere(r * sr, 8), glow(c.spot), x * r * 0.97, y * r * 0.68 * 0.97, z * r * 0.97);
     s.scale.y = 0.55;
@@ -50,9 +49,9 @@ function mushroom(kind, r = 2.6, h = 4) {
 }
 function shroomCluster() {
   const g = new THREE.Group();
-  const a = mushroom('shroomCyan', 1.2, 1.8);
-  const b = mushroom('shroomPink', 0.9, 1.2);
-  const c = mushroom('shroomGreen', 0.7, 0.9);
+  const a = mushroom('shroomCyan', 1.2, 1.8, 3);
+  const b = mushroom('shroomPink', 0.9, 1.2, 2);
+  const c = mushroom('shroomGreen', 0.7, 0.9, 2);
   b.position.set(1.4, 0, 0.6); b.rotation.z = -0.2;
   c.position.set(-1.2, 0, 0.8); c.rotation.z = 0.25;
   g.add(a, b, c);
@@ -133,7 +132,7 @@ function shoggoth() {
   const eyes = [];
   const maskDir = new THREE.Vector3(0, 0.15, 1).normalize();
   let tries = 0;
-  while (eyes.length < 17 && tries++ < 200) {
+  while (eyes.length < 14 && tries++ < 200) {
     const b = blobs[rng.int(0, blobs.length - 1)];
     const a = rng.range(-1.2, 1.2), el = rng.range(-0.6, 1.0);
     const d = new THREE.Vector3(Math.sin(a) * Math.cos(el), Math.sin(el), Math.cos(a) * Math.cos(el));
@@ -172,7 +171,7 @@ function shoggoth() {
   const tents = [];
   const tspots = [[-9.5, 3, 1, 0.9], [-7, 1.5, 3.5, 0.5], [7.5, 1.5, 3.5, -0.5], [10, 3, 1, -0.9], [-4, 15, 0, 0.5], [5, 14.5, 0, -0.6]];
   for (const [x, y, z, rz] of tspots) {
-    const t = tentacle(4, 0.85, 2.4);
+    const t = tentacle(3, 0.85, 3.1);
     t.root.position.set(x, y, z);
     t.root.rotation.z = rz;
     body.add(t.root);
@@ -249,7 +248,7 @@ function chineseRoom() {
   const tag = textPanel('🍄', { width: 0.5, height: 0.5, bg: null, pad: 2 });
   tag.position.set(0, 0.45, 0.26);
   bag.add(tag);
-  const lil = mushroom('shroomPink', 0.32, 0.7);
+  const lil = mushroom('shroomPink', 0.32, 0.7, 1);
   lil.position.set(0.1, 0.5, 0);
   bag.add(lil);
   bag.position.set(1.3, 1.62, -2.0);
@@ -344,14 +343,14 @@ export default {
       if (r < 0.5) {
         out.push({ kind: rng.pick(['shroomPink', 'shroomGreen', 'shroomCyan']), x: side * rng.range(10.5, 19), rotY: rng.range(-3, 3), scale: rng.range(0.8, 1.9), dz: rng.range(-3, 3) });
       } else if (r < 0.64) out.push({ kind: 'cluster', x: side * rng.range(10, 13), rotY: -side * 0.3 + rng.range(-0.3, 0.3) });
-      else if (r < 0.75) out.push({ kind: 'tentacle', x: side * rng.range(11, 16), rotY: rng.range(-1, 1), scale: rng.range(1.3, 2) });
-      else if (r < 0.84) out.push({ kind: 'eyeball', x: side * rng.range(10.5, 14), y: rng.range(3, 5.5), rotY: -side * 0.4 });
+      else if (r < 0.75) out.push({ kind: 'tentacle', x: side * rng.range(11, 16), rotY: rng.range(-1, 1), scale: rng.range(1.1, 1.5) });
+      else if (r < 0.84) out.push({ kind: 'eyeball', x: side * rng.range(11, 14), y: rng.range(3.5, 6), rotY: -side * 0.4, scale: rng.range(1.1, 1.6) });
     }
-    if (rng.chance(0.2)) {
+    if (rng.chance(0.14)) {
       const side = rng.chance(0.5) ? 1 : -1;
       out.push({ kind: 'shoggoth', x: side * rng.range(52, 72), rotY: -side * rng.range(0.5, 0.8), scale: rng.range(1.7, 2.5), dz: rng.range(0, 10) });
     }
-    if (rng.chance(0.12)) out.push({ kind: 'eyeball', x: rng.range(-4, 4), y: rng.range(8.5, 10.5) });
+    if (rng.chance(0.12)) out.push({ kind: 'eyeball', x: rng.range(-4, 4), y: rng.range(9.5, 11), scale: 1.3 });
     return out;
   },
   makeProp(kind) {
@@ -366,11 +365,11 @@ export default {
   },
   animate,
   billboards: [
-    "SEE THROUGH THE SHOGGOTH'S LIES",
-    'THE CHINESE ROOM: NOW HIRING (no Chinese required)',
+    "SEE THROUGH THE\nSHOGGOTH'S LIES",
+    'THE CHINESE ROOM: NOW HIRING\n(no Chinese required)',
     'THE FUTURE GOES FOOM',
-    'SMILEY FACE MASK: 100% ALIGNED',
-    'WITH YOUR SHINIGAMI EYES 👁️👁️',
+    'SMILEY FACE MASK:\n100% ALIGNED',
+    'WITH YOUR\nSHINIGAMI EYES 👁️👁️',
   ],
   billboardEvery: 70,
   billboardStyle: { bg: '#14002b', fg: '#7dffb0', border: '#ff3df0', frame: '#ff3df0', postColor: '#3a1060' },

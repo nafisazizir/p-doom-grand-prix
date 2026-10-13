@@ -187,7 +187,7 @@ export class Kart {
     // spinout
     if (s.spinT > 0) this.spin += dt * 22 * s.spinT;
     else this.spin = lerp(this.spin, Math.round(this.spin / (Math.PI * 2)) * Math.PI * 2, 1 - Math.exp(-dt * 12));
-    this.body.rotation.set(-s.boostK * 0.18 - (s.launchK || 0) * 0.5, this.yaw + this.spin, this.lean);
+    this.body.rotation.set(s.boostK * 0.18 + (s.launchK || 0) * 0.5, this.yaw + this.spin, this.lean);
     this.body.position.y = s.boostK * 0.15 + (s.spinT > 0 ? Math.abs(Math.sin(s.t * 20)) * 0.3 : 0);
     // squash on the beat
     const sq = Math.pow(1 - s.beatPhase, 4) * 0.06;

@@ -1,0 +1,96 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>theme test</title>
+<link rel="stylesheet" href="../vendor/fonts/fonts.css" />
+<style>html,body{margin:0;background:#000;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"../vendor/three/build/three.module.js","three/addons/":"../vendor/three/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
+import { billboard, makeRng, hashSeed } from '../src/toolkit.js';
+import badlands from '../src/themes/badlands.js';
+import paperclip from '../src/themes/paperclip.js';
+const TH = { badlands, paperclip };
+const q = new URLSearchParams(location.search);
+const sections = await (await fetch('../assets/sections.json')).json();
+const secId = q.get('sec') || 's7';
+const sec = sections.find((s) => s.id === secId);
+const th = TH[sec.theme];
+const t = parseFloat(q.get('t') || (sec.start + 1));
+const mode = q.get('mode') || 'road';
+await document.fonts.ready;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const effect = new OutlineEffect(renderer, { defaultThickness: 0.004 });
+const scene = new THREE.Scene();
+const pal = th.palette;
+const c = document.createElement('canvas'); c.width = 2; c.height = 256;
+const g = c.getContext('2d'); const gr = g.createLinearGradient(0, 0, 0, 256);
+gr.addColorStop(0, pal.skyTop); gr.addColorStop(0.55, pal.skyBottom); gr.addColorStop(1, pal.skyBottom);
+g.fillStyle = gr; g.fillRect(0, 0, 2, 256);
+const bg = new THREE.CanvasTexture(c); bg.colorSpace = THREE.SRGBColorSpace; scene.background = bg;
+scene.fog = new THREE.Fog(pal.skyBottom, 70, 230);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8888aa, th.night ? 1.4 : 2.0));
+const dl = new THREE.DirectionalLight(0xffffff, th.night ? 1.4 : 2.2); dl.position.set(-5, 10, 6); scene.add(dl);
+const kartZ = t * 30;
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 800), new THREE.MeshLambertMaterial({ color: pal.ground }));
+ground.rotation.x = -Math.PI / 2; ground.position.set(0, -0.15, -kartZ - 300); scene.add(ground);
+const road = new THREE.Mesh(new THREE.PlaneGeometry(14, 800), new THREE.MeshLambertMaterial({ color: pal.road }));
+road.rotation.x = -Math.PI / 2; road.position.set(0, 0, -kartZ - 300); scene.add(road);
+for (const s of [-1, 1]) {
+  const k = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 800), new THREE.MeshLambertMaterial({ color: pal.kerb }));
+  k.rotation.x = -Math.PI / 2; k.position.set(s * 7.55, 0.1, -kartZ - 300); scene.add(k);
+}
+const kart = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1, 2.2), new THREE.MeshLambertMaterial({ color: '#ff5ca8' }));
+kart.position.set(0, 0.5, -kartZ); scene.add(kart);
+const active = [];
+function spawn(p, zf) {
+  const obj = p.make ? p.make() : th.makeProp(p.kind);
+  if (!obj) { console.error('no prop', p.kind); return; }
+  obj.position.set(p.x || 0, p.y || 0, -zf);
+  obj.rotation.set(0, p.rotY || 0, 0);
+  obj.scale.setScalar(p.scale || 1);
+  scene.add(obj);
+  active.push({ obj, kind: p.kind, zf, data: p.data, seed: (zf * 13.37) % 1 });
+}
+let count = 0;
+if (mode === 'road') {
+  // emulate track spawning across sections (straight road)
+  const secZ = sections.map((s) => s.start * 30);
+  for (let zf = Math.floor((kartZ - 25) / 12) * 12; zf < kartZ + 230; zf += th.spacing) {
+    let si = 0; for (let i = secZ.length - 1; i >= 0; i--) if (zf >= secZ[i]) { si = i; break; }
+    const s = sections[si];
+    if (TH[s.theme] !== th) continue;
+    const rng = makeRng(hashSeed(s.id, Math.round(zf)));
+    for (const p of th.layout(zf, rng, s)) { spawn(p, zf + (p.dz || 0)); count++; }
+  }
+  let k = 0;
+  for (let zf = Math.ceil(kartZ / 80) * 80; zf < kartZ + 230; zf += 80, k++) {
+    const text = th.billboards[k % th.billboards.length], side = k % 2 ? -1 : 1;
+    spawn({ kind: 'bb', x: side * 13.5, rotY: -side * 0.35, make: () => billboard(text, th.billboardStyle) }, zf);
+  }
+} else {
+  // catalogue: every kind in a row facing camera
+  const kinds = q.get('kinds').split(',');
+  kinds.forEach((kind, i) => spawn({ kind, x: (i - (kinds.length - 1) / 2) * 14, data: { t0: sec.start, t1: sec.end, zb: kartZ + 40 } }, kartZ + 40));
+}
+const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 2000);
+if (mode === 'road') {
+  const cx = parseFloat(q.get('cx') || 0), cy = parseFloat(q.get('cy') || 3.5);
+  camera.position.set(cx, cy, -kartZ + 7);
+  camera.lookAt(cx * 0.5, 2.2 + (cy - 3.5) * 0.4, -kartZ - 25);
+} else {
+  camera.position.set(0, parseFloat(q.get('cy') || 10), -kartZ + parseFloat(q.get('cz') || 25));
+  camera.lookAt(0, 4, -kartZ - 40);
+}
+for (const a of active) th.animate && th.animate(a.obj, a.kind, t, 0.1, a);
+let tris = 0; scene.traverse((o) => { if (o.isMesh) tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; });
+effect.render(scene, camera);
+const info = document.createElement('div');
+info.style.cssText = 'position:fixed;left:8px;top:8px;color:#fff;font:14px monospace;text-shadow:0 0 3px #000';
+info.textContent = `${th.id} ${secId} t=${t} props=${count} tris=${Math.round(tris)} calls=${renderer.info.render.calls}`;
+document.body.appendChild(info);
+</script></body></html>

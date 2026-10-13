@@ -25,7 +25,7 @@ function floodlight() {
     l.rotation.x = Math.PI / 2;
     head.add(l);
   }
-  const beam = mesh(G.cone(3.6, 13, 16), additive('#fff6c8', 0.13), 0, 0, 6.8);
+  const beam = mesh(G.cone(3.6, 13, 16), additive('#fff2b0', 0.12), 0, 0, 6.8);
   beam.rotation.x = -Math.PI / 2;
   head.add(beam);
   g.userData.beam = beam;
@@ -268,16 +268,13 @@ function ilyaDoor() {
   const rays = new THREE.Group();
   rays.position.set(0.3, 0, 0.2);
   g.add(rays);
-  const floor = mesh(G.plane(6, 9), additive('#fff3b0', 0.28), 0.6, 0.05, 4.4);
+  const floor = mesh(G.plane(4.4, 6.5), additive('#fff3b0', 0.3), 0.4, 0.05, 3.4);
   floor.rotation.x = -Math.PI / 2;
   rays.add(floor);
-  const rm = additive('#fff6c8', 0.16);
-  for (let k = 0; k < 5; k++) {
-    const ray = mesh(G.box(0.5 + k * 0.15, 0.05, 9), rm, -0.8 + k * 0.6, 1.2 + k * 0.85, 4.5);
-    ray.rotation.x = 0.18 + k * 0.03;
-    ray.rotation.y = 0.1 - k * 0.05;
-    rays.add(ray);
-  }
+  // a square-ish frustum of light flaring out of the gap
+  const shaft = mesh(G.cyl(2.3, 1.5, 6.5, 4), additive('#fff6c8', 0.18), 0.4, 3.0, 3.4);
+  shaft.rotation.set(Math.PI / 2, Math.PI / 4, 0); // spin about its axis, then lay it along +z
+  rays.add(shaft);
   const sign = textPanel('WHAT DID ILYA SEE?', { width: 6.5, height: 1.3, bg: INK, fg: '#fff3b0', border: '#fff3b0', borderW: 8, radius: 16 });
   sign.position.set(0, 7.4, 0.2);
   g.add(sign);

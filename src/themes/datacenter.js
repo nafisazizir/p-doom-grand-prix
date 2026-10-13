@@ -93,12 +93,15 @@ function addFire(g, spots) {
   for (const [x, y, z, s] of spots) {
     const f = new THREE.Group();
     f.position.set(x, y, z);
-    f.add(mesh(G.cone(0.62 * s, 2.3 * s, 7), glow('#ff4a1a'), 0, 1.15 * s, 0));
-    f.add(mesh(G.cone(0.42 * s, 1.5 * s, 7), glow('#ffa21f'), 0, 0.75 * s, 0.22 * s));
-    f.add(mesh(G.cone(0.22 * s, 0.8 * s, 6), glow('#fff2a0'), 0, 0.4 * s, 0.4 * s));
+    f.add(mesh(G.cone(0.85 * s, 2.1 * s, 6), glow('#ff4a1a'), 0, 1.05 * s, 0));
+    f.add(mesh(G.cone(0.6 * s, 1.4 * s, 6), glow('#ffa21f'), 0.15 * s, 0.7 * s, 0.3 * s));
+    f.add(mesh(G.cone(0.32 * s, 0.75 * s, 6), glow('#fff2a0'), 0.05 * s, 0.38 * s, 0.58 * s));
+    const tongue = mesh(G.cone(0.3 * s, 1.1 * s, 5), glow('#ff7a1f'), -0.6 * s, 0.55 * s, 0.1);
+    tongue.rotation.z = 0.35;
+    f.add(tongue);
     flames.push(f);
     g.add(f);
-    const p = mesh(G.sphere(0.75, 10), toon('#4a3f48'), x, y + 3, z - 0.3);
+    const p = mesh(G.icosa(0.75, 1), toon('#5a5058', { outline: false, transparent: true, opacity: 0.8 }), x, y + 3, z - 0.3);
     smoke.push(p);
     g.add(p);
   }
@@ -119,7 +122,7 @@ function animateFire(obj, t, seed) {
       const ph = (t * 0.55 + seed + i * 0.5) % 1;
       const base = u.flames[i].position;
       p.position.set(base.x + Math.sin(ph * 5 + i) * 0.5 + ph * 1.2, base.y + 1.6 + ph * 6, base.z - 0.3);
-      const sc = 0.5 + ph * 1.6;
+      const sc = 0.45 + ph * 1.2;
       p.scale.set(sc, sc, sc);
     });
   }
@@ -166,11 +169,12 @@ function animateSparks(obj, t, seed) {
 }
 function bannerGantry(P) {
   const g = cableGantry(P, { ceiling: false, sparks: true });
-  g.add(mesh(G.rbox(15, 3.9, 0.4, 0.15), toon('#3a1410'), 0, 12.0, -0.1));
-  const p = textPanel(['100,000 GPUs', '(ALL OF THEM ON FIRE)'], { width: 14.4, height: 3.4, bg: '#ffd23f', fg: '#3a0a0a', border: '#ff3b2f', borderW: 18 });
-  p.position.set(0, 12.0, 0.15);
+  // hangs off the front of the beam; bottom edge stays above y = 7
+  g.add(mesh(G.rbox(12.6, 3.0, 0.3, 0.12), toon('#3a1410'), 0, 8.55, 0.95));
+  const p = textPanel(['100,000 GPUs', '(ALL OF THEM ON FIRE)'], { width: 12, height: 2.6, bg: '#ffd23f', fg: '#3a0a0a', border: '#ff3b2f', borderW: 10, pad: 10, radius: 20 });
+  p.position.set(0, 8.55, 1.12);
   g.add(p);
-  addFire(g, [[-6.8, 13.9, 0, 1.0], [6.9, 13.9, 0, 0.8]]);
+  addFire(g, [[-6.2, 10.05, 0, 1.0], [5.9, 10.05, 0, 0.8]]);
   return g;
 }
 
@@ -308,7 +312,7 @@ export function alarmBeacon(color = '#ff2a2a', height = 4.2) {
   spin.position.set(0, height + 0.7, 0);
   const bm = glow(color, { transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide });
   for (const s of [1, -1]) {
-    const b = mesh(G.cone(0.9, 4.2, 12), bm, s * 2.1, 0, 0);
+    const b = mesh(G.cone(0.85, 3.4, 12), bm, s * 1.7, 0, 0);
     b.rotation.z = s * Math.PI / 2;
     spin.add(b);
   }
@@ -408,7 +412,7 @@ export default {
   animate: sharedAnimate,
   billboards: ['GPU RICH ONLY BEYOND THIS POINT', 'LOSS: GOING DOWN (VIBES: GOING UP)', 'STABLE TRAINING RUN (DAY 3 OF 3)', 'PLEASE DO NOT FEED THE MODEL', 'SINGULARITY: NOW LOADING… 98%'],
   billboardEvery: 70,
-  billboardStyle: { bg: '#0b1d2a', fg: '#7ff6ff', border: '#2fe6ff', frame: '#1c2a3d', postColor: '#2a3a50', postH: 5.6 },
+  billboardStyle: { bg: '#0b1d2a', fg: '#7ff6ff', border: '#2fe6ff', frame: '#1c2a3d', postColor: '#2a3a50', postH: 6.5 },
   hazards: ['oom', 'thinking'],
   enterLines: ['WELCOME TO THE DATA CENTRE', 'MIND THE CABLES', 'I FEEL MY ATOMS REARRANGING'],
 };
@@ -426,7 +430,7 @@ export const datacenterFire = {
   layout(zf, rng, sec) {
     const out = [];
     const slot = Math.round(zf / 8);
-    if (slot % 6 === 0) out.push({ kind: 'banner', x: 0, y: 0 });
+    if (slot % 10 === 0) out.push({ kind: 'banner', x: 0, y: 0 });
     else if (slot % 2 === 0) out.push({ kind: 'gantry', x: 0, y: 0 });
     for (const side of [-1, 1]) {
       const r = rng();
@@ -453,7 +457,7 @@ export const datacenterFire = {
   animate: sharedAnimate,
   billboards: ['THIS IS FINE (100,000 GPUs)', 'SAFETY FENCE → (was here)', 'RLHF: ASKEW', 'POST-CHINCHILLA: SUPER-DENSE', 'JUST TRANSFORMERS ALL THE WAY DOWN'],
   billboardEvery: 65,
-  billboardStyle: { bg: '#2a0a06', fg: '#ffd23f', border: '#ff5a1f', frame: '#3a1410', postColor: '#3a2020', postH: 5.6 },
+  billboardStyle: { bg: '#2a0a06', fg: '#ffd23f', border: '#ff5a1f', frame: '#3a1410', postColor: '#3a2020', postH: 6.5 },
   hazards: ['fence', 'oom'],
   enterLines: ['THIS IS FINE', 'EVERYTHING IS ON FIRE (EFFICIENTLY)', 'RLHF HAS GONE ASKEW'],
 };

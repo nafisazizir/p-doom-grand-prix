@@ -104,8 +104,8 @@ function tone(type, freq, t, { a = 0.005, d = 0.2, peak = 0.3, dest, detune = 0,
   const ctx = audio.ctx;
   const o = ctx.createOscillator();
   o.type = type;
-  o.frequency.setValueAtTime(freq, t);
-  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + (slideTime ?? a + d));
+  o.frequency.setValueAtTime(Math.min(freq, 20000), t);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(Math.min(slideTo, 20000), t + (slideTime ?? a + d));
   o.detune.value = detune;
   const g = ctx.createGain();
   env(g, t, a, peak, d);
@@ -133,7 +133,7 @@ function noise(t, { a = 0.005, d = 0.3, peak = 0.3, type = 'bandpass', f0 = 1000
 const SFX = {
   pickup({ step = 0 }) {
     const t = audio.ctx.currentTime;
-    const m = pent(10 + Math.min(step, 24)); // climbs 1 pentatonic step per combo
+    const m = pent(5 + (step % 12)); // climbs 1 pentatonic step per combo, wraps every ~2 octaves
     tone('square', mtof(m), t, { d: 0.09, peak: 0.12 });
     tone('sine', mtof(m + 12), t, { d: 0.14, peak: 0.12 });
   },
