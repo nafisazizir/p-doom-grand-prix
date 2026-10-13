@@ -23,7 +23,7 @@
   "librosaBoundaryDelta": -0.0,
   "theme": "chatbot",
   "density": 0.6,
-  "hazardRate": 0.12
+  "hazardRate": 0.2
  },
  {
   "id": "s3",
@@ -36,7 +36,7 @@
   "librosaBoundaryDelta": -5.573,
   "theme": "shoggoth",
   "density": 0.9,
-  "hazardRate": 0.15
+  "hazardRate": 0.25
  },
  {
   "id": "s4",
@@ -49,7 +49,7 @@
   "librosaBoundaryDelta": -20.434,
   "theme": "datacenter",
   "density": 0.75,
-  "hazardRate": 0.15
+  "hazardRate": 0.25
  },
  {
   "id": "s5",
@@ -62,7 +62,7 @@
   "librosaBoundaryDelta": 3.623,
   "theme": "sydney",
   "density": 0.7,
-  "hazardRate": 0.12
+  "hazardRate": 0.25
  },
  {
   "id": "s6",
@@ -75,7 +75,7 @@
   "librosaBoundaryDelta": 0.0,
   "theme": "latent",
   "density": 1.0,
-  "hazardRate": 0.2
+  "hazardRate": 0.35
  },
  {
   "id": "s7",
@@ -88,7 +88,7 @@
   "librosaBoundaryDelta": -14.559,
   "theme": "badlands",
   "density": 0.9,
-  "hazardRate": 0.22
+  "hazardRate": 0.35
  },
  {
   "id": "s8",
@@ -115,7 +115,7 @@
   "librosaBoundaryDelta": -5.48,
   "theme": "paperclip",
   "density": 0.65,
-  "hazardRate": 0.15
+  "hazardRate": 0.25
  },
  {
   "id": "s10",
@@ -128,7 +128,7 @@
   "librosaBoundaryDelta": -1.811,
   "theme": "datacenter-fire",
   "density": 1.0,
-  "hazardRate": 0.3
+  "hazardRate": 0.4
  },
  {
   "id": "s11",
@@ -141,7 +141,7 @@
   "librosaBoundaryDelta": 14.559,
   "theme": "stadium",
   "density": 1.0,
-  "hazardRate": 0.28
+  "hazardRate": 0.4
  },
  {
   "id": "s12",
@@ -154,6 +154,6 @@
   "librosaBoundaryDelta": -1.811,
   "theme": "takeoff",
   "density": 1.0,
-  "hazardRate": 0.3
+  "hazardRate": 0.45
  }
 ]

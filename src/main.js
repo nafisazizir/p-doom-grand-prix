@@ -19,12 +19,12 @@ import { clamp, lerp } from './toolkit.js';
 // ---------------- tuning ----------------
 // P(doom) = sigmoid(doomX). doomX starts at 0 (= 0.50) and is unbounded, so the meter eases towards 0/1.
 // Near 0.50 one GPU ≈ −0.004 and one miss ≈ +0.006, as in the spec. Tuned by simulation:
-// ~97% accuracy ends ≈ 0.04, 90% ≈ 0.08, 80% ≈ 0.3, 65% ≈ 0.8, 50% ≈ 0.97 (boost doubles GPUs, not doom).
+// Simulated finals: 97% accuracy ≈ 0.04, 90% ≈ 0.10, 80% ≈ 0.33, 65% ≈ 0.79, 50% ≈ 0.97 (boost doubles GPUs, not doom).
 export const TUNE = {
   start: 0,
-  collect: -0.016,
-  miss: 0.02,
-  hazard: 0.15,
+  collect: -0.017,
+  miss: 0.018,
+  hazard: 0.12,
   drift: 0.01, // P(doom) creeps up by itself every second: the world keeps scaling
   chain: -0.15,
   flawless: -0.25,
@@ -551,6 +551,7 @@ function hitPower(p, t) {
 
 // ---------------- autopilot (testing / attract / backup recording) ----------------
 let autopilot = params.has('autopilot');
+const tapMarks = [];
 function autoSteer(t) {
   const notes = level.notes;
   let target = 0;
@@ -861,6 +862,14 @@ function onKey(code) {
   if (code === 'BracketLeft') { clock.latency -= 0.01; return; }
   if (code === 'BracketRight') { clock.latency += 0.01; return; }
   if (code === 'KeyO') { outlines = !outlines; return; }
+  if (code === 'KeyS' && params.has('tap') && mode === 'RACE') {
+    // ?tap=1: re-mark section starts by ear
+    const tt = +G.songTime.toFixed(2);
+    tapMarks.push(tt);
+    hud.announce('MARK ' + tt.toFixed(2), 700);
+    console.log('[tap] section start', tt, 'all:', JSON.stringify(tapMarks));
+    return;
+  }
   if (code === 'KeyB') { autopilot = !autopilot; hud.announce(autopilot ? 'AUTOPILOT (unsupervised)' : 'HUMAN IN THE LOOP', 1000); return; }
   if (code === 'Escape') { toTitle(); return; }
   if (code === 'KeyR' && (mode === 'RACE' || mode === 'RESULTS')) { startRace({ webcam: G.webcam }); return; }

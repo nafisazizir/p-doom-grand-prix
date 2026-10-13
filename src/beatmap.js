@@ -125,6 +125,7 @@ export function buildLevel(bm, sections, themes) {
     // --- hazards on off-beats
     const hz = sec.hazardRate ?? 0;
     const types = theme.hazards && theme.hazards.length ? theme.hazards : ['oom'];
+    let hzCount = 0;
     if (hz > 0 && !isFirst) {
       for (let i = 0; i < sb.length - 1; i++) {
         const tm = (sb[i] + sb[i + 1]) / 2;
@@ -135,16 +136,17 @@ export function buildLevel(bm, sections, themes) {
         // the path the player naturally takes between the two beats
         const path = (xs[i] + xs[i + 1]) / 2;
         const w = rng.range(0.4, 0.55);
-        // put the hazard on the opposite side from the path, or near-ish it for spice
-        let x;
-        const side = path > 0.15 ? -1 : path < -0.15 ? 1 : rng.pick([-1, 1]);
-        x = side * rng.range(0.45, 0.8);
-        // ensure clearance from the path >= 0.35 and a >=0.5 wide gap exists somewhere
-        if (Math.abs(x - path) < w / 2 + 0.3) x = clamp(path - side * -1 * (w / 2 + 0.35), -0.8, 0.8);
+        // anywhere that keeps clear of the path the music wants you on (centre included, so camping doesn't work)
+        let x = null;
+        for (let k = 0; k < 12 && x === null; k++) {
+          const c = rng.range(-0.78, 0.78);
+          if (Math.abs(c - path) >= w / 2 + 0.28 && Math.abs(c - xs[i + 1]) >= w / 2 + 0.15) x = c;
+        }
+        if (x === null) continue;
         const lo = x - w / 2, hi = x + w / 2;
         const gap = Math.max(lo - -1, 1 - hi);
         if (gap < 0.5) continue;
-        hazards.push({ t: tm, x, w, type: rng.pick(types), section: si });
+        hazards.push({ t: tm, x, w, type: types[hzCount++ % types.length], section: si }); // round-robin so every gag shows up
         i += tier === 'high' ? 1 : 2; // no back-to-back spam
       }
     }
