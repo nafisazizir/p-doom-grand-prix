@@ -442,10 +442,10 @@ const HW = 15.5;
 function hoarding(i) {
   const g = new THREE.Group();
   g.add(kit('hoard', (kt) => {
-    const body = MAT.paint('#14163a'), steel = MAT.metal('#7a809a');
+    const body = MAT.paint('#14163a'), steel = MAT.plastic('#7a809a');
     kt.add(G.rbox(HW + 0.4, 1.7, 0.5, 0.12), body, 0, 1.15, -0.15);
     for (const x of [-HW / 2 + 1, 0, HW / 2 - 1]) kt.bar([x, 0, -0.3], [x, 0.9, -1.0], 0.15, steel);
-    kt.add(G.box(HW + 0.4, 0.12, 0.6), MAT.chrome(), 0, 2.02, -0.1);
+    kt.add(G.box(HW + 0.4, 0.12, 0.6), MAT.plastic('#d8dce8'), 0, 2.02, -0.1);
   }));
   const [txt, col] = SPONSORS[i % SPONSORS.length];
   const tex = once('hoardTex' + i, () => canvasTex(1024, 96, (x) => {
@@ -469,27 +469,26 @@ function hoarding(i) {
 const CONF_N = 60;
 function confettiCannon() {
   const g = new THREE.Group();
-  g.add(kit('cannonBase', (kt) => {
+  const barrel = new THREE.Group();
+  g.add(barrel);
+  barrel.add(kit('cannon', (kt) => {
     kt.add(G.rbox(2.8, 1.0, 2.8, 0.25), MAT.paint('#2a2f62'), 0, 0.5, 0);
     for (const s of [-1, 1]) {
-      kt.add(G.cyl(0.75, 0.75, 0.45, 18), MAT.rubber(), s * 1.55, 0.75, 0, 0, 0, Math.PI / 2);
+      kt.add(G.cyl(0.75, 0.75, 0.45, 18), MAT.plastic('#1d1d24'), s * 1.55, 0.75, 0, 0, 0, Math.PI / 2);
       kt.add(G.cyl(0.35, 0.35, 0.5, 12), MAT.chrome(), s * 1.6, 0.75, 0, 0, 0, Math.PI / 2);
     }
+    // barrel aimed up and towards the road (+z)
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.85, 0, 0));
+    const put = (geo, mat, y, rx = 0) => {
+      const qq = q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, 0, 0)));
+      _m4.compose(new THREE.Vector3(0, y, 0).applyQuaternion(q).add(new THREE.Vector3(0, 1.4, 0)), qq, new THREE.Vector3(1, 1, 1));
+      kt.addM(geo, mat, _m4);
+    };
+    put(G.cyl(0.75, 0.95, 3.2, 20), MAT.paint(HOT), 1.4);
+    put(G.torus(0.78, 0.18, 20), MAT.metal('#ffcf4a', { roughness: 0.2 }), 3.0, Math.PI / 2);
+    put(G.torus(0.92, 0.12, 20), MAT.metal('#ffcf4a', { roughness: 0.2 }), 0.2, Math.PI / 2);
+    put(G.cyl(0.62, 0.62, 0.1, 16), toon('#120818'), 3.02);
   }));
-  const barrel = new THREE.Group();
-  barrel.position.set(0, 1.4, 0);
-  barrel.rotation.x = 0.85; // aim up and towards the road (+z)
-  g.add(barrel);
-  barrel.add(kit('cannonBarrel', (kt) => {
-    kt.add(G.cyl(0.75, 0.95, 3.2, 20), MAT.paint(HOT), 0, 1.4, 0);
-    kt.add(G.torus(0.78, 0.18, 20), MAT.metal('#ffcf4a', { roughness: 0.2 }), 0, 3.0, 0, Math.PI / 2);
-    kt.add(G.torus(0.92, 0.12, 20), MAT.metal('#ffcf4a', { roughness: 0.2 }), 0, 0.2, 0, Math.PI / 2);
-    kt.add(G.cyl(0.62, 0.62, 0.1, 16), toon('#120818'), 0, 3.02, 0);
-  }));
-  const tag = textPanel('SOTA!', { width: 2.0, height: 0.8, bg: GOLD, fg: INK, border: INK, borderW: 8, radius: 14 });
-  tag.position.set(0, 1.4, 0.98);
-  tag.rotation.x = -0.15;
-  barrel.add(tag);
   const cm = once('confMat', () => new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, toneMapped: false }));
   const conf = new THREE.InstancedMesh(G.plane(0.42, 0.24), cm, CONF_N);
   conf.frustumCulled = false;
@@ -790,9 +789,7 @@ export default {
     if (at(170) || at(520)) out.push({ kind: 'loom', x: -24, rotY: 0.55 });
     if (at(120) || at(560)) out.push({ kind: 'podium', x: -17.5, rotY: 0.6 });
     if (at(260) || at(480)) out.push({ kind: 'trophy', x: -16, rotY: 0.5 });
-    if (!straight || rng.chance(0.3)) {
-      if (rng.chance(0.4)) out.push({ kind: 'confetti', x: -rng.range(14.5, 16), rotY: Math.PI / 2 - 0.3 });
-    } else if (rng.chance(0.35)) out.push({ kind: 'confetti', x: -14.5, rotY: Math.PI / 2 - 0.3 });
+    if (rng.chance(straight ? 0.14 : 0.24)) out.push({ kind: 'confetti', x: -rng.range(14.5, 16), rotY: Math.PI / 2 - 0.3 });
     return out;
   },
   makeProp(kind) {
@@ -830,7 +827,7 @@ export default {
     switch (kind) {
       case 'confetti':
         updateConfetti(obj, t + sd * 5);
-        ud.barrel.scale.set(1 + 0.12 * k, 1 - 0.12 * k, 1 + 0.12 * k);
+        ud.barrel.scale.set(1 + 0.08 * k, 1 - 0.1 * k, 1 + 0.08 * k);
         break;
       case 'mast':
         { const gs = 20 * (1 + 0.08 * Math.sin(t * 13 + sd * 9)); ud.glare.scale.set(gs, gs, 1); }

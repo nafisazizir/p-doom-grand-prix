@@ -12,7 +12,7 @@ export const debug = {
     this.getInfo = getInfo;
     this._el = document.getElementById('debug');
     this._el.innerHTML = `<div id="dbg-txt"></div>SFX vol <input id="dbg-sfx" type="range" min="0" max="1" step="0.05" value="0.45">
-keys: 1-9,0,-,= jump section · [ ] latency · P pause · G god · W webcam · O outlines · R restart · Esc menu`;
+keys: 1-9,0,-,= jump section · [ ] latency · P pause · H hide HUD · G god · W webcam · O quality · B autopilot · R restart · Esc menu`;
     this._txt = this._el.querySelector('#dbg-txt');
     this._el.querySelector('#dbg-sfx').addEventListener('input', (e) => setSfx(+e.target.value));
     if (new URLSearchParams(location.search).has('debug')) this.toggle();

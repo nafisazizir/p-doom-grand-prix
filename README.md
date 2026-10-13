@@ -32,6 +32,7 @@ Everything is vendored in `vendor/` (three.js r186, MediaPipe Tasks Vision 0.10.
 | W                      | Toggle webcam steering mid-race                         |
 | Enter                  | Play (keyboard) from the title; retrain from results    |
 
+**Screenshots:** `P` (or the ⏸ button) pauses with only a tiny pill on screen · `H` hides the whole HUD · in v2, drag to orbit the camera around the kart while paused and scroll to zoom.
 **Dev keys:** `D` debug overlay · `1–9 0 - =` jump to sections 1–12 · `[ ]` latency ±10 ms · `P` pause · `G` god mode · `B` autopilot · `O` outlines on/off · `R` restart · `Esc` menu.
 **URL params:** `?section=N` (start in section N, keyboard) · `?autopilot` (bot drives; good for a backup recording) · `?debug` · `?tap=1` (press **S** to log section starts by ear).
 

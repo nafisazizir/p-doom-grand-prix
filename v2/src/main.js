@@ -137,6 +137,8 @@ function setupScreens() {
   $('btn-skip').onclick = () => { calibrating = false; startRace({ webcam: false }); };
   $('btn-retrain').onclick = () => { ensureAudio(); startRace({ webcam: G.webcam }); };
   $('btn-menu').onclick = () => toTitle();
+  $('btn-pause').onclick = (e) => { e.currentTarget.blur(); togglePause(); };
+  setRacingUI(false);
 }
 function ensureAudio() { if (audio.ctx.state === 'suspended') audio.ctx.resume(); }
 
@@ -145,6 +147,8 @@ function toTitle() {
   audio.pausedAt = 0;
   mode = 'TITLE';
   paused = false;
+  setRacingUI(false);
+  document.body.classList.remove('paused', 'photo');
   hud.show(false);
   hud.clearSplats();
   hud.setGold(false);
@@ -260,6 +264,7 @@ function startRace({ webcam = false, from = 0, countdown = true } = {}) {
 }
 function beginRace(from) {
   mode = 'RACE';
+  setRacingUI(true);
   showScreen(null);
   audio.play(from);
   clock.reset(from);
@@ -295,9 +300,21 @@ function jumpToSection(i) {
 
 function togglePause() {
   if (mode !== 'RACE') return;
-  if (!paused) { audio.pause(clock.now()); paused = true; showScreen('paused'); }
-  else { paused = false; showScreen(null); audio.play(audio.pausedAt); clock.reset(audio.pausedAt); }
+  if (!paused) {
+    audio.pause(clock.now());
+    paused = true;
+    showScreen('paused');
+    document.body.classList.add('paused');
+    startPhoto();
+  } else {
+    paused = false;
+    showScreen(null);
+    document.body.classList.remove('paused', 'photo');
+    audio.play(audio.pausedAt);
+    clock.reset(audio.pausedAt);
+  }
 }
+function setRacingUI(on) { $('btn-pause').style.display = on ? '' : 'none'; }
 
 function rivalLine() {
   const p = rivals?.place || 1;
@@ -311,6 +328,8 @@ function finish() {
   if (G.finished) return;
   G.finished = true;
   mode = 'RESULTS';
+  setRacingUI(false);
+  document.body.classList.remove('paused', 'photo');
   audio.stop();
   hud.show(false);
   hud.setGold(false);
@@ -917,6 +936,29 @@ if (params.get('cam')) {
   const v = params.get('cam').split(',').map(Number);
   ['back', 'height', 'ahead', 'aheadH', 'fov', 'lat'].forEach((k, i) => { if (!isNaN(v[i])) CAM[k] = v[i]; });
 }
+// ---------------- photo mode (while paused): drag to orbit, scroll to zoom ----------------
+const photo = { yaw: 0, pitch: 0.32, dist: 11, drag: null };
+function startPhoto() {
+  document.body.classList.add('photo');
+  const k = kart.root.position;
+  const d = camera.position.clone().sub(k);
+  photo.dist = Math.max(4, d.length());
+  photo.pitch = Math.asin(Math.min(0.99, Math.max(-0.2, d.y / photo.dist)));
+  photo.yaw = Math.atan2(d.x, d.z);
+}
+(() => {
+  const cv = document.getElementById('game');
+  cv.addEventListener('pointerdown', (e) => { if (paused) { photo.drag = { x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); } });
+  cv.addEventListener('pointermove', (e) => {
+    if (!paused || !photo.drag) return;
+    photo.yaw -= (e.clientX - photo.drag.x) * 0.006;
+    photo.pitch = Math.min(1.45, Math.max(0.04, photo.pitch - (e.clientY - photo.drag.y) * 0.005));
+    photo.drag = { x: e.clientX, y: e.clientY };
+  });
+  cv.addEventListener('pointerup', () => { photo.drag = null; });
+  cv.addEventListener('wheel', (e) => { if (paused) { e.preventDefault(); photo.dist = Math.min(80, Math.max(3, photo.dist * Math.exp(e.deltaY * 0.001))); } }, { passive: false });
+})();
+
 const camTarget = new THREE.Vector3();
 const camPosT = new THREE.Vector3();
 const camUp = new THREE.Vector3();
@@ -929,6 +971,18 @@ function updateCamera(dt, kartZ, t, boostK, now) {
     camera.lookAt(p.x, p.y + 1.2, p.z);
     camera.fov = 50;
     camera.updateProjectionMatrix();
+    return;
+  }
+  if (paused && mode === 'RACE') {
+    const k = kart.root.position;
+    camera.position.set(
+      k.x + Math.sin(photo.yaw) * Math.cos(photo.pitch) * photo.dist,
+      k.y + 1 + Math.sin(photo.pitch) * photo.dist,
+      k.z + Math.cos(photo.yaw) * Math.cos(photo.pitch) * photo.dist,
+    );
+    camera.up.set(0, 1, 0);
+    camera.lookAt(k.x, k.y + 1.2, k.z);
+    camState.snap = true; // resume snaps back to the chase cam
     return;
   }
   const back = CAM.back + 2 * boostK;
@@ -961,6 +1015,7 @@ function updateCamera(dt, kartZ, t, boostK, now) {
 function onKey(code) {
   if (code === 'KeyD') { debug.toggle(); return; }
   if (code === 'KeyP') { togglePause(); return; }
+  if (code === 'KeyH') { document.body.classList.toggle('clean'); return; }
   if (code === 'KeyG') { G.god = !G.god; hud.announce(G.god ? 'GOD MODE' : 'MORTAL MODE', 900); return; }
   if (code === 'BracketLeft') { clock.latency -= 0.01; return; }
   if (code === 'BracketRight') { clock.latency += 0.01; return; }

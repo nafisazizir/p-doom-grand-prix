@@ -14,27 +14,56 @@ import { SPEED } from '../course.js';
 // Kit: merged vertex-coloured props
 // ================================================================================================
 const KMATS = new Map();
+// all opaque kit surfaces share ONE material: roughness/metalness live in a per-vertex attribute (aRM)
+const PBR = {
+  paint: [0.24, 0.08], plastic: [0.42, 0], matte: [0.86, 0], metal: [0.34, 0.9], chrome: [0.08, 1],
+  rubber: [0.95, 0], glassy: [0.05, 0.35], wood: [0.72, 0], leaf: [0.62, 0],
+};
+const GLOWK = { glow: 2.6, glowHot: 4.0, glowSoft: 1.15 };
+/** shared uniforms for shader-driven LED blinking: update uTime/uBeat from a theme's animate() */
+export const KIT_U = { uTime: { value: 0 }, uBeat: { value: 0 } };
+function pbrMaterial(doubleSide) {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 1, side: doubleSide ? THREE.DoubleSide : THREE.FrontSide });
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec2 aRM;\nvarying vec2 vRM;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRM = aRM;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vRM;')
+      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = vRM.x;')
+      .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = vRM.y;');
+  };
+  m.customProgramCacheKey = () => 'kitpbr' + (doubleSide ? 2 : 1);
+  return m;
+}
+function glowMaterial() {
+  const m = new THREE.MeshBasicMaterial({ vertexColors: true });
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = KIT_U.uTime;
+    sh.uniforms.uBeat = KIT_U.uBeat;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 aBlink;\nuniform float uTime, uBeat;\nvarying float vOn;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        vOn = 1.0;
+        if (aBlink.x > 0.5 && aBlink.x < 1.5) vOn = step(-0.25, sin(uTime * aBlink.z + aBlink.y));
+        else if (aBlink.x > 1.5) vOn = step(fract(uBeat + aBlink.y * 0.08), 0.5);`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vOn;')
+      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= mix(0.06, 1.0, vOn);');
+  };
+  m.customProgramCacheKey = () => 'kitglow';
+  return m;
+}
 /** shared vertex-coloured materials by kind */
 export function kitMat(kind) {
-  let m = KMATS.get(kind);
+  const key = kind in PBR ? (kind === 'leaf' ? 'pbr2' : 'pbr') : kind in GLOWK ? 'glow' : kind;
+  let m = KMATS.get(key);
   if (m) return m;
-  const vc = { vertexColors: true };
-  switch (kind) {
-    case 'paint': m = new THREE.MeshPhysicalMaterial({ ...vc, roughness: 0.3, metalness: 0.05, clearcoat: 1, clearcoatRoughness: 0.12 }); break;
-    case 'plastic': m = new THREE.MeshStandardMaterial({ ...vc, roughness: 0.45 }); break;
-    case 'matte': m = new THREE.MeshStandardMaterial({ ...vc, roughness: 0.88 }); break;
-    case 'metal': m = new THREE.MeshStandardMaterial({ ...vc, roughness: 0.34, metalness: 0.9 }); break;
-    case 'chrome': m = new THREE.MeshStandardMaterial({ ...vc, roughness: 0.07, metalness: 1 }); break;
-    case 'rubber': m = new THREE.MeshStandardMaterial({ ...vc, roughness: 0.95 }); break;
-    case 'glassy': m = new THREE.MeshPhysicalMaterial({ ...vc, roughness: 0.04, metalness: 0.25, clearcoat: 1, clearcoatRoughness: 0.02 }); break;
-    case 'wood': m = new THREE.MeshStandardMaterial({ ...vc, roughness: 0.72 }); break;
-    case 'leaf': m = new THREE.MeshStandardMaterial({ ...vc, roughness: 0.62, side: THREE.DoubleSide }); break;
-    case 'glow': m = new THREE.MeshBasicMaterial({ ...vc }); m.color.setScalar(2.6); break;
-    case 'glowHot': m = new THREE.MeshBasicMaterial({ ...vc }); m.color.setScalar(4.0); break;
-    case 'glowSoft': m = new THREE.MeshBasicMaterial({ ...vc }); m.color.setScalar(1.15); break;
-    default: m = new THREE.MeshStandardMaterial({ ...vc, roughness: 0.5 });
-  }
-  KMATS.set(kind, m);
+  if (key === 'pbr') m = pbrMaterial(false);
+  else if (key === 'pbr2') m = pbrMaterial(true);
+  else if (key === 'glow') m = glowMaterial();
+  else m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5 });
+  KMATS.set(key, m);
   return m;
 }
 
@@ -52,10 +81,18 @@ function prep(geo) {
 
 export class Kit {
   constructor() { this.b = new Map(); }
-  /** add geometry with a material kind ('paint'|'chrome'|… or a Material), colour, position, euler rotation, scale, part */
+  /**
+   * add geometry with a material kind ('paint'|'chrome'|'matte'|'glow'|… or a Material), colour, position, euler
+   * rotation, scale, part. Glow parts named 'ledA' (random blink) / 'ledB' (blink on the beat) are animated in the
+   * shader and stay merged.
+   */
   add(geo, mat, color = '#ffffff', p = O3, r = O3, s = I3, part = '') {
     const isStr = typeof mat === 'string';
-    const key = part + '|' + (isStr ? mat : mat.uuid);
+    const isGlow = isStr && mat in GLOWK;
+    let blink = 0;
+    if (isGlow && (part === 'ledA' || part === 'ledB')) { blink = part === 'ledA' ? 1 : 2; part = ''; }
+    const bucket = isStr ? (mat in PBR ? (mat === 'leaf' ? 'pbr2' : 'pbr') : isGlow ? 'glow' : mat) : mat.uuid;
+    const key = part + '|' + bucket;
     let bk = this.b.get(key);
     if (!bk) this.b.set(key, (bk = { part, mat: isStr ? kitMat(mat) : mat, geos: [] }));
     const g = prep(geo);
@@ -64,10 +101,19 @@ export class Kit {
     _m4.compose(_v.set(p[0], p[1], p[2]), _q, _s.set(s[0], s[1], s[2]));
     g.applyMatrix4(_m4);
     const n = g.attributes.position.count;
-    const col = new Float32Array(n * 3);
+    const col = new Float32Array(n * 3), rm = new Float32Array(n * 2), bl = new Float32Array(n * 3);
     _c.set(color);
-    for (let i = 0; i < n; i++) { col[i * 3] = _c.r; col[i * 3 + 1] = _c.g; col[i * 3 + 2] = _c.b; }
+    const k = isGlow ? GLOWK[mat] : 1;
+    const [ro, me] = (isStr && PBR[mat]) || [0.5, 0];
+    const ph = Math.abs(Math.sin(p[0] * 12.9898 + p[1] * 78.233 + p[2] * 37.719) * 43758.5453) % 1;
+    for (let i = 0; i < n; i++) {
+      col[i * 3] = _c.r * k; col[i * 3 + 1] = _c.g * k; col[i * 3 + 2] = _c.b * k;
+      rm[i * 2] = ro; rm[i * 2 + 1] = me;
+      bl[i * 3] = blink; bl[i * 3 + 1] = ph * 6.283; bl[i * 3 + 2] = 3 + ph * 9;
+    }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.setAttribute('aRM', new THREE.BufferAttribute(rm, 2));
+    g.setAttribute('aBlink', new THREE.BufferAttribute(bl, 3));
     bk.geos.push(g);
     return this;
   }
@@ -101,7 +147,7 @@ export class Kit {
 const KCACHE = new Map();
 /**
  * Build (once per key) a merged prop; returns a fresh Group of meshes sharing the baked geometry.
- * build(kit) may return a function(post) for per-geometry post-processing. group.userData.parts[name] = sub-group.
+ * post(geo, part, material) may post-process each baked geometry once. group.userData.parts[name] = sub-group.
  */
 export function kitProp(key, build, post = null) {
   let baked = KCACHE.get(key);
@@ -463,7 +509,7 @@ function house(variant) {
         k.box(0.1, 0.4, 0.1, 'metal', '#444', [4.7 + dx, 1.3, -4.3]);
       }
       k.rbox(1.1, 2.6, 1.0, 0.08, 'paint', '#1a1e28', [6.8, 1.4, -4.9]);
-      for (let i = 0; i < 6; i++) k.box(0.5, 0.08, 0.05, 'glow', i % 2 ? '#5dffb0' : '#ffb84a', [6.8, 0.6 + i * 0.35, -4.38], O3, i % 2 ? 'leds' : '');
+      for (let i = 0; i < 6; i++) k.box(0.5, 0.08, 0.05, 'glow', i % 2 ? '#5dffb0' : '#ffb84a', [6.8, 0.6 + i * 0.35, -4.38], O3, i % 2 ? 'ledB' : 'ledA');
       // string lights across the garage ceiling
       for (let i = 0; i < 10; i++) k.sphere(0.1, 8, 'glow', '#ffcf7a', [2.6 + i * 0.47, 2.95 - Math.sin(i / 9 * Math.PI) * 0.35, -0.6]);
       // founders (cardboard) at the desk, pizza boxes on the floor
@@ -480,8 +526,9 @@ function house(variant) {
     // driveway + path + hedge + lawn lamp
     k.box(5.2, 0.12, 9.5, 'matte', '#c8c4bc', [4.7, 0.06, 4.6]);
     k.box(1.4, 0.1, 7, 'matte', '#d8d0c4', [-0.4, 0.05, 3.6]);
-    k.rbox(4.2, 1.2, 1.1, 0.4, 'leaf', '#3f7a3a', [-4.6, 0.6, 0.8]);
-    k.rbox(4.2, 1.0, 0.9, 0.35, 'leaf', '#4a8a42', [-4.6, 1.3, 0.8]);
+    k.rbox(4.2, 1.2, 1.1, 0.4, 'matte', '#3f7a3a', [-4.6, 0.6, 0.8]);
+    k.rbox(4.2, 1.0, 0.9, 0.35, 'matte', '#4a8a42', [-4.6, 1.3, 0.8]);
+    if (!founders) k.box(0.07, 1.2, 0.07, 'paint', '#ffffff', [-3.2, 0.5, 2.15]);
     // a parked car on the driveway (not in the founders' house: they sold it for GPUs)
     if (!founders) {
       const cc = ['#d8452b', '#2b6ad8', '#f2f2f2', '#2a2a30'][v % 4];
@@ -502,15 +549,12 @@ function house(variant) {
     n.position.set(3.0, 2.15, -5.75);
     g.add(n);
     g.userData.screens = g.userData.parts.screens;
-    g.userData.leds = g.userData.parts.leds;
   } else {
     const yard = ['THIS HOUSE BELIEVES\nIN SCALING', 'NO SOLICITING\n(except agents)', 'BEWARE OF DOG\n(it is a robot)', 'PROUD PARENT OF\nA 7B MODEL'][variant % 4];
     const s = textPanel(yard.split('\n'), { width: 2.2, height: 1.2, bg: '#ffffff', fg: INK, border: '#2b6ad8', borderW: 10, radius: 10 });
     s.position.set(-3.2, 1.25, 2.2);
     s.rotation.y = 0.25;
     g.add(s);
-    const st = mesh(G.box(0.07, 1.2, 0.07), toon('#ffffff'), -3.2, 0.5, 2.15);
-    g.add(st);
   }
   return g;
 }
@@ -822,6 +866,7 @@ export default {
   spacing: 12,
   layout(zf, rng, sec) {
     const out = [];
+    if (location.search.includes('noprops')) return out; // TEMP
     const rel = zf - sec.start * SPEED;
     const at = (target, p) => { if (rel > target - 6 && rel <= target + 6) out.push({ ...p, dz: target - rel }); };
     // hero set pieces at exact spots
@@ -882,6 +927,8 @@ export default {
     }
   },
   animate(obj, kind, t, beatPhase, entry) {
+    KIT_U.uTime.value = t;
+    KIT_U.uBeat.value = beatPhase;
     const u = obj.userData;
     const seed = entry?.seed || 0;
     if (u.crowd) {
@@ -912,7 +959,6 @@ export default {
       u.flag.rotation.x = Math.sin(t * 5.3 + seed * 3) * 0.06;
     } else if (u.screens) {
       u.screens.visible = Math.sin(t * 23 + seed) > -0.9;
-      if (u.leds) u.leds.visible = beatPhase < 0.5;
     } else if (u.blimp) {
       obj.position.y += Math.sin(t * 0.7) * 0.01;
       obj.rotation.z = Math.sin(t * 0.5) * 0.03;

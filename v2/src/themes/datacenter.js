@@ -9,9 +9,8 @@
 // Every bay is baked once into a handful of merged meshes (see Kit in garage.js), so a 15 m wall of racks is
 // ~6 draw calls.
 import { THREE, glow, G, mesh, textPanel, FONT, roundRect, toon } from '../toolkit.js';
-import { surface } from '../textures.js';
 import { SPEED } from '../course.js';
-import { Kit, kitProp, kitMat, canvasTex, cachedGeo, halfCylGeo } from './garage.js';
+import { Kit, kitProp, canvasTex, cachedGeo, KIT_U } from './garage.js';
 
 const PI = Math.PI;
 const O3 = [0, 0, 0];
@@ -205,9 +204,6 @@ function holoMat(v) {
 function beamMat(color) {
   return cachedGeo('beamMat' + color, () => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
 }
-function floorMat(P) {
-  return surface('metalplate', { tint: P.floor, scale: 0.22, roughness: 0.45, metalness: 0.6 });
-}
 function wireTex() {
   return canvasTex('dcWire', 128, 128, (x, W) => {
     x.clearRect(0, 0, W, W);
@@ -288,7 +284,12 @@ function overhead(k, P) {
     k.add(G.torus(0.32, 0.06, 14), 'paint', '#d8202a', [x, 10.2, -3.0], [0, 0, 0]);
   }
 }
-function floorSlab(k, P) { k.box(BAY_L, 0.16, 9.2, floorMat(P), '#ffffff', [0, 0.08, -2.6]); }
+function floorSlab(k, P) {
+  k.box(BAY_L, 0.16, 9.2, 'metal', P.hot ? '#3a2a26' : '#2a3440', [0, 0.08, -2.6]);
+  // raised-floor tile seams + a glowing guide line along the aisle
+  for (let x = -BAY_L / 2 + 1.2; x < BAY_L / 2; x += 2.4) k.box(0.05, 0.02, 9.2, 'paint', '#10161e', [x, 0.17, -2.6]);
+  k.box(BAY_L, 0.03, 0.12, 'glow', P.hot ? '#ff5a1f' : '#2fe6ff', [0, 0.18, 1.95]);
+}
 
 function fenceRun(k, P, seed) {
   // safety fence at the road edge: posts + wire panels + hazard stripes; some broken / knocked flat
@@ -412,7 +413,6 @@ function bay(P, kind) {
   const g = kitProp((hot ? 'H' : 'C') + kind, (k) => buildBay(k, P, spec), hot ? sootPost(!!spec.melt) : null);
   const u = g.userData;
   const parts = u.parts;
-  u.leds = [parts.ledA, parts.ledB];
   if (parts.blades) { parts.blades.position.set(0, 5.6, -3.0); u.blades = parts.blades; u.rgb = parts.rgb; }
   if (parts.liquid) u.liquid = parts.liquid;
   if (parts.ring) u.ring = parts.ring;
@@ -749,10 +749,8 @@ function sharedAnimate(obj, kind, t, beatPhase, entry) {
   const seed = entry?.seed || 0;
   const u = obj.userData;
   PTIME.value = t;
-  if (u.leds) {
-    if (u.leds[0]) u.leds[0].visible = Math.sin(t * 9.3 + seed * 20) > -0.2;
-    if (u.leds[1]) u.leds[1].visible = beatPhase < 0.5;
-  }
+  KIT_U.uTime.value = t;
+  KIT_U.uBeat.value = beatPhase;
   if (u.ring) u.ring.visible = Math.sin(t * 2.1 + seed * 9) > -0.6;
   if (u.flames) {
     for (let i = 0; i < u.flames.length; i++) {
@@ -814,6 +812,7 @@ export default {
   spacing: SP,
   layout(zf, rng, sec) {
     const out = [];
+    if (location.search.includes('noprops')) return out; // TEMP
     const rel = zf - sec.start * SPEED;
     const slot = Math.round(zf / SP);
     // overhead: alternate cable gantries, the progress bar and the stable-run board
@@ -872,6 +871,7 @@ export const datacenterFire = {
   spacing: SP,
   layout(zf, rng, sec) {
     const out = [];
+    if (location.search.includes('noprops')) return out; // TEMP
     const rel = zf - sec.start * SPEED;
     const slot = Math.round(zf / SP);
     const at = (target, p) => { if (rel > target - SP / 2 && rel <= target + SP / 2) { out.push(p); return true; } return false; };

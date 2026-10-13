@@ -177,3 +177,14 @@ button.alt { background: #c8b8ff; }
 #card { border-radius: 26px; background: linear-gradient(180deg, #fff6c0, #ffd23f 60%, #ffb02e); box-shadow: 0 8px 0 var(--ink), 0 18px 40px rgba(0,0,0,0.3); }
 #pip-canvas { border-radius: 22px; box-shadow: 0 6px 0 var(--ink), 0 16px 40px rgba(0,0,0,0.35); }
 .logo { filter: drop-shadow(0 0 40px rgba(255,140,40,0.35)); }
+
+/* ---------- screenshot-friendly pause ---------- */
+#paused { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 40; pointer-events: none; }
+.pausepill { font: 600 15px var(--font); color: #fff; background: rgba(20,10,35,0.72); border: 2px solid rgba(255,255,255,0.35); border-radius: 999px; padding: 6px 16px; white-space: nowrap; backdrop-filter: blur(6px); }
+.pausepill b { color: var(--yellow); }
+#btn-pause { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 39; font-size: 18px; padding: 4px 12px; border-radius: 12px; box-shadow: 0 3px 0 var(--ink); opacity: 0.75; pointer-events: auto; }
+#btn-pause:hover { opacity: 1; transform: translateX(-50%) translateY(-2px); }
+body.paused #btn-pause { display: none; }
+body.clean #hud, body.clean #popups, body.clean #splats, body.clean #paused, body.clean #btn-pause, body.clean #debug, body.clean #stamp, body.clean #banner, body.clean #fx { display: none !important; }
+body.photo #game { cursor: grab; }
+body.photo #game:active { cursor: grabbing; }

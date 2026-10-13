@@ -140,6 +140,8 @@ function setupScreens() {
   $('btn-skip').onclick = () => { calibrating = false; startRace({ webcam: false }); };
   $('btn-retrain').onclick = () => { ensureAudio(); startRace({ webcam: G.webcam }); };
   $('btn-menu').onclick = () => toTitle();
+  $('btn-pause').onclick = (e) => { e.currentTarget.blur(); togglePause(); };
+  setRacingUI(false);
 }
 function ensureAudio() { if (audio.ctx.state === 'suspended') audio.ctx.resume(); }
 
@@ -148,6 +150,8 @@ function toTitle() {
   audio.pausedAt = 0;
   mode = 'TITLE';
   paused = false;
+  setRacingUI(false);
+  document.body.classList.remove('paused', 'photo');
   hud.show(false);
   hud.clearSplats();
   hud.setGold(false);
@@ -253,6 +257,7 @@ function startRace({ webcam = false, from = 0, countdown = true } = {}) {
 }
 function beginRace(from) {
   mode = 'RACE';
+  setRacingUI(true);
   showScreen(null);
   audio.play(from);
   clock.reset(from);
@@ -288,14 +293,28 @@ function jumpToSection(i) {
 
 function togglePause() {
   if (mode !== 'RACE') return;
-  if (!paused) { audio.pause(clock.now()); paused = true; showScreen('paused'); }
-  else { paused = false; showScreen(null); audio.play(audio.pausedAt); clock.reset(audio.pausedAt); }
+  if (!paused) {
+    audio.pause(clock.now());
+    paused = true;
+    showScreen('paused');
+    document.body.classList.add('paused');
+    
+  } else {
+    paused = false;
+    showScreen(null);
+    document.body.classList.remove('paused', 'photo');
+    audio.play(audio.pausedAt);
+    clock.reset(audio.pausedAt);
+  }
 }
+function setRacingUI(on) { $('btn-pause').style.display = on ? '' : 'none'; }
 
 function finish() {
   if (G.finished) return;
   G.finished = true;
   mode = 'RESULTS';
+  setRacingUI(false);
+  document.body.classList.remove('paused', 'photo');
   audio.stop();
   hud.show(false);
   hud.setGold(false);
@@ -858,6 +877,7 @@ function updateCamera(dt, kartZ, t, boostK, now) {
 function onKey(code) {
   if (code === 'KeyD') { debug.toggle(); return; }
   if (code === 'KeyP') { togglePause(); return; }
+  if (code === 'KeyH') { document.body.classList.toggle('clean'); return; }
   if (code === 'KeyG') { G.god = !G.god; hud.announce(G.god ? 'GOD MODE' : 'MORTAL MODE', 900); return; }
   if (code === 'BracketLeft') { clock.latency -= 0.01; return; }
   if (code === 'BracketRight') { clock.latency += 0.01; return; }

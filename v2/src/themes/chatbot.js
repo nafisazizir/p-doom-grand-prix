@@ -290,7 +290,6 @@ function chatTower(spec) {
   const g = new THREE.Group();
   const podH = 4;
   g.add(mesh(G.rbox(w + 5, podH + 14, d + 5, 0.8), surface('concrete', { tint: '#e9e2ff', scale: 3 }), 0, (podH - 14) / 2, 0));
-  g.add(mesh(G.rbox(w + 5.4, 0.5, d + 5.4, 0.2), STEEL(), 0, podH, 0));
   const by = podH + h / 2 + h * 0.3;
   const body = mesh(bubbleGeo(w, h, d, tail, Math.min(w, h) * 0.3), gloss(col, { roughness: 0.18 }), 0, by, 0);
   g.add(body);
@@ -309,14 +308,11 @@ function chatTower(spec) {
   g.add(tp);
   // typing-dot crown + antenna with a blinking beacon
   for (let i = -1; i <= 1; i++) g.add(mesh(G.sphere(1.3, 20), gloss(crown), i * 3.2, by + h / 2 + 1.8, 0));
-  g.add(mesh(G.cyl(0.25, 0.4, 9, 8), STEEL(), w * 0.3, by + h / 2 + 4, -1));
-  const bea = mesh(G.sphere(0.55, 12), glow('#ff3d6e', { intensity: 4 }), w * 0.3, by + h / 2 + 8.7, -1);
-  bea.userData.keep = true;
-  g.add(bea);
+  g.add(mesh(G.cyl(0.25, 0.4, 9, 8), gloss(crown), w * 0.3, by + h / 2 + 4, -1));
+  g.add(mesh(G.sphere(0.55, 12), glow('#ff3d6e', { intensity: 4 }), w * 0.3, by + h / 2 + 8.7, -1));
   // side "scroll bar" fin
-  g.add(mesh(G.rbox(1.2, h * 0.5, 1.2, 0.5), gloss('#ffffff'), w / 2 + 1.4, by + h * 0.1, 0));
+  g.add(mesh(G.rbox(1.2, h * 0.5, 1.2, 0.5), gloss(crown), w / 2 + 1.4, by + h * 0.1, 0));
   bake(g, 'tower' + JSON.stringify(spec));
-  g.userData.beacon = bea;
   return g;
 }
 const TOWERS = [
@@ -358,7 +354,7 @@ function kaiju(P = CHAT) {
   // eyes: glossy white, big pupils with highlights, angry brows
   for (const s of [-1, 1]) {
     body.add(mesh(G.sphere(2.6, 24), gloss('#ffffff'), s * 5.2, 4.2, fz - 1.2));
-    body.add(mesh(G.sphere(1.25, 18), gloss('#16102a', { roughness: 0.1 }), s * 4.8, 3.9, fz + 0.95));
+    body.add(mesh(G.sphere(1.25, 18), toon('#120a20', { roughness: 0.35 }), s * 4.8, 3.9, fz + 0.95));
     body.add(mesh(G.sphere(0.4, 10), glow('#ffffff', { intensity: 1.6 }), s * 4.4, 4.5, fz + 2.0));
     const brow = mesh(G.rbox(5, 1.1, 1.2, 0.5), gloss(P.dark), s * 5.2, 7.6, fz);
     brow.rotation.z = s * 0.32;
@@ -426,7 +422,7 @@ function maw(P = CHAT) {
   // eyes looking down at the driver
   for (const s of [-1, 1]) {
     head.add(mesh(G.sphere(3.4, 24), gloss('#ffffff'), s * 8.5, 17, 2.4));
-    head.add(mesh(G.sphere(1.7, 18), gloss('#16102a', { roughness: 0.08 }), s * 8.1, 15.7, 5.2));
+    head.add(mesh(G.sphere(1.7, 18), toon('#120a20', { roughness: 0.35 }), s * 8.1, 15.7, 5.2));
     head.add(mesh(G.sphere(0.55, 10), glow('#ffffff', { intensity: 1.6 }), s * 7.6, 16.4, 6.6));
     const brow = mesh(G.rbox(6.5, 1.3, 1.4, 0.6), gloss(P.dark), s * 8.6, 21.4, 2.6);
     brow.rotation.z = s * 0.3;
@@ -1121,8 +1117,8 @@ export default {
     if (rel >= 140 && rel < 150) out.push({ kind: 'gantry2', x: 0, y: 6 });
     if (rel >= 170 && rel < 180) out.push({ kind: 'gantry3', x: 0, y: 6 });
     if (rel >= 200 && rel < 210) out.push({ kind: 'regen', x: 0, y: 6 });
-    if (rel >= 20 && rel < 30) G0({ kind: 'kaiju', x: -62, rotY: 0.55, scale: 1.3, dz: 20 });
-    if (rel >= 130 && rel < 140) G0({ kind: 'kaiju', x: 68, rotY: -0.6, scale: 1.15, dz: 30 });
+    if (rel >= 40 && rel < 50) G0({ kind: 'kaiju', x: -52, rotY: 0.6, scale: 1.45, dz: 30 });
+    if (rel >= 150 && rel < 160) G0({ kind: 'kaiju', x: 50, rotY: -0.65, scale: 1.4, dz: 40 });
     // jersey barriers + road works before the ramp
     if (rel < 40) for (const side of [-1, 1]) out.push({ kind: rel < 10 ? 'jerseySign' : 'jersey', x: side * 10.4, rotY: 0 });
     // roadside signs bolted to the barrier
@@ -1136,7 +1132,7 @@ export default {
         const i = rng.int(0, CHAT_BUBBLES.length - 1);
         const w = CHAT_BUBBLES[i].w || 7, sc = rng.range(1.0, 1.3);
         out.push({ kind: 'bubble' + i, x: side * rng.range(12 + (sc * w) / 2, 16 + (sc * w) / 2), y: rng.range(6, 9.5), rotY: -side * rng.range(0.15, 0.35), scale: sc });
-      } else if (r < 0.5) G0({ kind: 'tower' + rng.int(5, 6), x: side * rng.range(26, 34), rotY: -side * 0.3, scale: rng.range(0.7, 0.85) });
+      } else if (r < (rel > 110 ? 0.62 : 0.5)) G0({ kind: 'tower' + rng.int(5, 6), x: side * rng.range(26, 36), rotY: -side * 0.3, scale: rng.range(0.75, 0.95) });
       else if (r < 0.6) G0({ kind: 'send', x: side * rng.range(14, 18), rotY: -side * 0.3 });
       else if (r < 0.68) G0({ kind: 'regenTower', x: side * rng.range(17, 21), rotY: -side * 0.35 });
       else if (r < 0.75) G0({ kind: 'thumbs', x: side * rng.range(18, 22), rotY: -side * 0.35 });
@@ -1144,7 +1140,7 @@ export default {
     }
     // the skyline
     for (const side of [-1, 1]) {
-      if (rng.chance(0.55)) G0({ kind: 'tower' + rng.int(0, 4), x: side * rng.range(48, 120), rotY: -side * rng.range(0.2, 0.5), scale: rng.range(1.0, 1.6), dz: rng.range(-4, 4) });
+      if (rng.chance(0.75)) G0({ kind: 'tower' + rng.int(0, 4), x: side * rng.range(46, 110), rotY: -side * rng.range(0.2, 0.5), scale: rng.range(1.0, 1.6), dz: rng.range(-4, 4) });
     }
     return out;
   },

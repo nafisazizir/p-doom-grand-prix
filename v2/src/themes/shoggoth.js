@@ -60,7 +60,7 @@ const SMILE = new THREE.TorusGeometry(1, 0.16, 6, 16, Math.PI);
 // mushrooms
 // =====================================================================================================
 /** glossy mushroom: r = cap radius, h = stem height. Cap is a dyn group (squashes on the beat). */
-function mushroom(col, r = 2.6, h = 4, nSpots = 7, seed = 1) {
+function mushroom(col, r = 2.6, h = 4, nSpots = 7, seed = 1, stat = false) {
   const g = new THREE.Group();
   const rng = makeRng(seed);
   const stem = mesh(STEM_GEO, STEM, 0, 0, 0);
@@ -69,7 +69,7 @@ function mushroom(col, r = 2.6, h = 4, nSpots = 7, seed = 1) {
   const sk = mesh(SKIRT_GEO, STEM, 0, h * 0.78, 0);
   sk.scale.set(r * 0.62, r * 0.5, r * 0.62);
   g.add(sk);
-  const cap = dyn(new THREE.Group());
+  const cap = stat ? new THREE.Group() : dyn(new THREE.Group());
   cap.position.y = h * 0.97;
   const dome = mesh(CAP_GEO, capMat[col]);
   dome.scale.set(r, r, r);
@@ -89,7 +89,7 @@ function mushroom(col, r = 2.6, h = 4, nSpots = 7, seed = 1) {
     cap.add(s);
   }
   g.add(cap);
-  g.userData.caps = [cap];
+  g.userData.caps = stat ? [] : [cap];
   return g;
 }
 function shroom(col, size) {
@@ -97,11 +97,10 @@ function shroom(col, size) {
   if (size === 'mega') {
     // a lean towards the road + a couple of babies at the foot
     g.children[0].rotation.z = 0;
-    for (const [x, z, s, c] of [[1.6, 1.2, 0.35, 'Cyan'], [-1.4, 1.5, 0.28, 'Gold']]) {
-      const b = mushroom(c, 2.6 * s, 3.6 * s, 3, 9);
+    for (const [x, z, s] of [[1.6, 1.2, 0.35], [-1.4, 1.5, 0.28]]) {
+      const b = mushroom(col, 2.6 * s, 3.6 * s, 3, 9, true);
       b.position.set(x, 0, z);
       g.add(b);
-      g.userData.caps.push(b.userData.caps[0]);
     }
   }
   bake(g, 'shroom' + col + size);
@@ -111,22 +110,20 @@ function shroom(col, size) {
 function shroomCluster(seed) {
   const g = new THREE.Group();
   const rng = makeRng(seed * 31 + 5);
-  const caps = [];
   const n = 5;
+  const col = CAP_KEYS[seed % CAP_KEYS.length];
   for (let i = 0; i < n; i++) {
-    const col = CAP_KEYS[(i + seed) % CAP_KEYS.length];
     const s = 0.3 + rng() * 0.32;
-    const m = mushroom(col, 2.6 * s, 3.6 * s * (0.8 + rng() * 0.6), 4, i + seed * 10);
+    const m = mushroom(col, 2.6 * s, 3.6 * s * (0.8 + rng() * 0.6), 4, i + seed * 10, true);
     const a = (i / n) * Math.PI * 2 + rng(), d = i ? 0.9 + rng() * 1.2 : 0;
     m.position.set(Math.cos(a) * d, 0, Math.sin(a) * d);
     m.rotation.z = (rng() - 0.5) * 0.4;
     g.add(m);
-    caps.push(m.userData.caps[0]);
   }
   // glow moss
   for (let i = 0; i < 7; i++) {
     const a = rng() * Math.PI * 2, d = rng() * 2.4;
-    const moss = mesh(HEMI, glow(i % 2 ? '#39ff9c' : '#7dfcff', { intensity: 1.4 }), Math.cos(a) * d, 0, Math.sin(a) * d);
+    const moss = mesh(HEMI, glow(CAPS[col].emi, { intensity: 1.4 }), Math.cos(a) * d, 0, Math.sin(a) * d);
     moss.scale.set(0.35 + rng() * 0.3, 0.18, 0.35 + rng() * 0.3);
     g.add(moss);
   }
@@ -134,8 +131,6 @@ function shroomCluster(seed) {
   sign.position.set(0.4, 1.2, 2.4);
   g.add(sign, mesh(G.box(0.1, 1.2, 0.1), MAT.wood('#7a4a2a'), 0.4, 0.6, 2.35));
   bake(g, 'cluster' + seed);
-  caps.forEach((c, i) => bake(c, 'clcap' + seed + i));
-  g.userData.caps = caps;
   return g;
 }
 
@@ -240,13 +235,13 @@ function spores() {
 function eye(r, iris = '#ffd23f', ring = null) {
   const e = new THREE.Group();
   e.add(mesh(G.sphere(r, 18), EYE_WHITE));
-  const ir = mesh(G.sphere(r * 0.52, 14), glow(iris, { intensity: 2.2 }), 0, 0, r * 0.66);
-  ir.scale.z = 0.5;
+  const ir = mesh(G.sphere(r * 0.5, 16), glow(iris, { intensity: 2.2 }), 0, 0, r * 0.86);
+  ir.scale.z = 0.32;
   e.add(ir);
-  const p = mesh(G.sphere(r * 0.26, 10), PUPIL, 0, 0, r * 0.88);
-  p.scale.set(0.55, 1.1, 0.5); // slit pupil
+  const p = mesh(G.sphere(r * 0.26, 10), PUPIL, 0, 0, r * 0.98);
+  p.scale.set(0.5, 1.15, 0.3); // slit pupil
   e.add(p);
-  if (ring) e.add(mesh(G.torus(r * 0.6, r * 0.05, 24), glow(ring, { intensity: 3 }), 0, 0, r * 0.83));
+  if (ring) e.add(mesh(G.torus(r * 0.52, r * 0.045, 24), glow(ring, { intensity: 3 }), 0, 0, r * 0.88));
   return e;
 }
 const SHINI_TAGS = [
@@ -260,25 +255,24 @@ function eyeball(i) {
   const g = new THREE.Group();
   const inner = dyn(new THREE.Group());
   g.add(inner);
-  const e = eye(1.5, '#ff1a3a', '#ff6a80');
-  for (let k = 0; k < 3; k++) {
-    const v = mesh(G.torus(1.5, 0.035, 28), toon('#ff4a6a', { emissive: '#ff1a3a', emissiveIntensity: 0.6 }), 0, 0, 0);
-    v.rotation.set(0.3 + k * 0.9, k * 1.1, 0);
-    e.add(v);
-  }
+  const e = eye(1.5, '#ff1a3a', '#ff1a3a');
+  // a heavy upper lid
+  const lid = mesh(HEMI, physical('#3a0a4a', { roughness: 0.35, clearcoat: 1, emissive: '#1a0020' }), 0, 0.12, 0.05);
+  lid.scale.setScalar(1.56);
+  lid.rotation.x = -0.75;
+  e.add(lid);
   inner.add(e);
-  const wingM = physical('#2a0a3a', { roughness: 0.4, clearcoat: 1, emissive: '#1a0020', side: THREE.DoubleSide });
-  const wings = [];
+  const wingM = physical('#5a1a7a', { roughness: 0.35, clearcoat: 1, emissive: '#5a0a4a', emissiveIntensity: 0.6, side: THREE.DoubleSide });
+  const wings = dyn(new THREE.Group());
+  wings.position.set(0, 0.4, -0.4);
   for (const s of [-1, 1]) {
-    const w = dyn(new THREE.Group());
-    w.position.set(s * 1.3, 0.4, -0.4);
-    const blade = mesh(G.cone(0.9, 2.6, 3), wingM, s * 1.3, 0, 0);
+    const blade = mesh(G.cone(0.9, 2.6, 3), wingM, s * 2.6, 0, 0);
     blade.rotation.z = s * Math.PI / 2;
     blade.scale.z = 0.12;
-    w.add(blade);
-    inner.add(w);
-    wings.push(w);
+    wings.add(blade);
   }
+  bake(wings, 'wings');
+  inner.add(wings);
   const tag = textPanel(SHINI_TAGS[i % SHINI_TAGS.length], { width: 4.2, height: 1.5, bg: '#14002b', fg: '#ff6a80', border: '#ff1a3a', borderW: 8, radius: 14, pad: 8 });
   tag.position.set(0, 2.6, 0);
   inner.add(tag);
@@ -293,12 +287,13 @@ function eyeball(i) {
 // =====================================================================================================
 // the shoggoth
 // =====================================================================================================
-function tentacle(n, r0, len, mat = TENT) {
-  const root = new THREE.Group();
+function tentacle(n, r0, len, mat = TENT, rigid = false) {
+  const root = rigid ? dyn(new THREE.Group()) : new THREE.Group();
   const joints = [];
   let parent = root;
   for (let i = 0; i < n; i++) {
-    const j = dyn(new THREE.Group());
+    const j = rigid ? new THREE.Group() : dyn(new THREE.Group());
+    if (rigid) j.rotation.z = 0.28 * (i > 0);
     const r = Math.round(r0 * (1 - i / (n + 1)) * 100) / 100;
     j.add(mesh(G.capsule(r, len), mat, 0, len / 2, 0));
     // suckers on the inner side
@@ -309,7 +304,8 @@ function tentacle(n, r0, len, mat = TENT) {
     joints.push(j);
     parent = j;
   }
-  parent.add(mesh(G.sphere(r0 * 0.5, 10), TIP, 0, len + r0 * 0.3, 0));
+  parent.add(mesh(G.sphere(r0 * 0.5, 10), rigid ? SUCKER : TIP, 0, len + r0 * 0.3, 0));
+  if (rigid) { bake(root, 'tr' + n + r0 + len + mat.uuid); return { root, joints: [root], tip: parent }; }
   joints.forEach((j, i) => bake(j, 'tj' + n + r0 + len + i + mat.uuid));
   return { root, joints, tip: parent };
 }
@@ -349,15 +345,15 @@ function shoggoth(variant = 0) {
     const lid = mesh(G.torus(er * 0.98, er * 0.16, 18), SHOG_SKIN2, pos.x, pos.y, pos.z);
     lid.lookAt(pos.x + d.x, pos.y + d.y, pos.z + d.z);
     body.add(lid);
-    const ip = pos.clone().addScaledVector(d, er * 0.72);
-    const ir = mesh(G.sphere(er * 0.5, 12), glow(irisCols[placed.length % 4], { intensity: 2.4 }), ip.x, ip.y, ip.z);
+    const ip = pos.clone().addScaledVector(d, er * 0.86);
+    const ir = mesh(G.sphere(er * 0.5, 12), glow(irisCols[variant % 4], { intensity: 2.4 }), ip.x, ip.y, ip.z);
     ir.lookAt(ip.x + d.x, ip.y + d.y, ip.z + d.z);
-    ir.scale.z = 0.45;
+    ir.scale.z = 0.32;
     look.add(ir);
-    const pp = pos.clone().addScaledVector(d, er * 0.92);
+    const pp = pos.clone().addScaledVector(d, er * 0.98);
     const pu = mesh(G.sphere(er * 0.24, 8), PUPIL, pp.x, pp.y, pp.z);
     pu.lookAt(pp.x + d.x, pp.y + d.y, pp.z + d.z);
-    pu.scale.set(0.6, 1.2, 0.4);
+    pu.scale.set(0.6, 1.2, 0.3);
     look.add(pu);
   }
   // the tiny smiley face mask (100% aligned)
@@ -382,9 +378,10 @@ function shoggoth(variant = 0) {
   const tents = [];
   const tspots = [[-10, 3, 1, 0.9], [10.5, 3, 1, -0.9], [-4.5, 15.5, 0, 0.45], [5, 14.5, 0, -0.6]];
   tspots.forEach(([x, y, z, rz], i) => {
-    const t = tentacle(3, 0.9, 3.4);
+    const t = tentacle(3, 0.9, 3.4, TENT, true);
     t.root.position.set(x, y, z);
     t.root.rotation.z = rz;
+    t.root.userData.rz = rz;
     body.add(t.root);
     tents.push(t.joints);
     if (i === 1) {
@@ -409,11 +406,11 @@ function groundTentacle() {
   const rim = mesh(G.torus(1.55, 0.16, 24), glow('#39ff9c', { intensity: 2.4 }), 0, 0.12, 0);
   rim.rotation.x = Math.PI / 2;
   g.add(rim);
-  const t = tentacle(5, 0.65, 1.6);
+  const t = tentacle(3, 0.65, 2.4);
   t.root.position.y = 0.1;
   g.add(t.root);
   const e = eye(0.6, '#ff1a3a');
-  e.position.set(0, 2.0, 0);
+  e.position.set(0, 2.8, 0);
   bake(e, 'gtEye');
   t.tip.add(e);
   bake(g, 'groundTent');
@@ -600,26 +597,21 @@ function bagOfShrooms() {
   const lab = textPanel(['BAG OF SHROOMS', '(ALIGNMENT FOOD)', '🍄 100% organic'], { width: 3.6, height: 2.8, bg: '#fffaf0', fg: '#4a1a6a', border: '#ff3df0', borderW: 10, radius: 18, pad: 14 });
   lab.position.set(0, 2.6, 1.43);
   g.add(lab);
-  const caps = [];
   for (const [x, z, s, c, rz] of [[-1.0, 0.2, 0.42, 'Pink', 0.3], [0.7, -0.2, 0.55, 'Green', -0.25], [0.1, 0.5, 0.35, 'Cyan', 0.05], [1.4, 0.6, 0.3, 'Gold', -0.5]]) {
-    const m = mushroom(c, 2.6 * s, 3.6 * s * 1.3, 4, 3);
+    const m = mushroom(c, 2.6 * s, 3.6 * s * 1.3, 4, 3, true);
     m.position.set(x, 4.6, z);
     m.rotation.z = rz;
     g.add(m);
-    caps.push(m.userData.caps[0]);
   }
   // spilled
   for (const [x, z, s, c] of [[2.8, 1.6, 0.3, 'Pink'], [-2.6, 1.9, 0.26, 'Cyan'], [2.0, 2.6, 0.22, 'Green']]) {
-    const m = mushroom(c, 2.6 * s, 3.6 * s, 3, 4);
+    const m = mushroom(c, 2.6 * s, 3.6 * s, 3, 4, true);
     m.position.set(x, 0, z);
     m.rotation.z = 1.3;
     m.position.y = 2.6 * s * 0.7;
     g.add(m);
-    caps.push(m.userData.caps[0]);
   }
   bake(g, 'bag');
-  caps.forEach((c, i) => bake(c, 'bagcap' + i));
-  g.userData.caps = caps;
   return g;
 }
 
@@ -754,12 +746,12 @@ function animate(obj, kind, t, beat, e) {
       u.look.rotation.x = stare ? 0.15 : Math.cos(t * 0.7 + s * 1.7) * 0.35;
     }
   }
-  if (u.wings) { const f = Math.sin(t * 12 + s) * 0.6; u.wings[0].rotation.y = f; u.wings[1].rotation.y = -f; }
+  if (u.wings) u.wings.scale.y = 0.35 + Math.abs(Math.sin(t * 9 + s)) * 0.75;
   if (u.tents) {
     for (let i = 0; i < u.tents.length; i++) {
       const J = u.tents[i];
       for (let j = 0; j < J.length; j++) {
-        J[j].rotation.z = Math.sin(t * 1.8 + i * 1.3 + j * 0.7 + s) * (0.18 + j * 0.07);
+        J[j].rotation.z = (J[j].userData.rz || 0) + Math.sin(t * 1.8 + i * 1.3 + j * 0.7 + s) * (0.18 + j * 0.07);
         J[j].rotation.x = Math.cos(t * 1.3 + i * 0.9 + j * 0.5 + s) * 0.12;
       }
     }
@@ -839,7 +831,7 @@ export default {
       if (rng.chance(0.5)) G0({ kind: 'shroom' + pickCol(rng) + 'tall', x: side * rng.range(24, 55), rotY: rng.range(-3, 3), scale: rng.range(2.5, 5), dz: rng.range(-4, 4) });
     }
     // overhead / airborne (works on the bridge too)
-    if (rng.chance(0.24)) out.push({ kind: 'eyeball' + rng.int(0, 3), x: rng.range(-16, 16), y: rng.range(8, 12.5), rotY: 0, scale: rng.range(1, 1.4) });
+    if (rng.chance(0.18)) out.push({ kind: 'eyeball' + rng.int(0, 3), x: rng.range(-16, 16), y: rng.range(8, 12.5), rotY: 0, scale: rng.range(1, 1.4) });
     if (rng.chance(0.3)) out.push({ kind: 'spores', x: rng.range(-18, 18), y: 6 });
     const onBridge = rel >= 224 && rel < 399;
     if (rng.chance(onBridge ? 0.45 : 0.12)) {
@@ -847,7 +839,7 @@ export default {
       out.push({ kind: 'jelly' + pickCol(rng), x: side * rng.range(12, 26), y: rng.range(10, 17), scale: rng.range(0.9, 1.5) });
     }
     // distant shoggoths
-    if (rng.chance(0.16)) {
+    if (rng.chance(0.1)) {
       const side = rng.chance(0.5) ? 1 : -1;
       G0({ kind: rng.chance(0.5) ? 'shogA' : 'shogB', x: side * rng.range(62, 130), rotY: -side * rng.range(0.4, 0.8), scale: rng.range(2.2, 3.4), dz: rng.range(0, 10) });
     }
