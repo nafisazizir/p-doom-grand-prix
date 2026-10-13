@@ -128,6 +128,7 @@ export class Renderer {
         const tex = await loader.loadAsync(new URL(info.file, base).href);
         tex.mapping = THREE.EquirectangularReflectionMapping;
         this.envs[slot] = this.pmrem.fromEquirectangular(tex).texture;
+        if (info.keyLightDirThree) (this.envKeys ||= {})[slot] = info.keyLightDirThree;
         tex.dispose();
       } catch (e) { console.warn('hdri', slot, e); }
     });
@@ -145,6 +146,13 @@ export class Renderer {
     const el = THREE.MathUtils.degToRad(s.elev ?? 40), az = THREE.MathUtils.degToRad((s.azim ?? 0)) + yaw0;
     // azimuth 0 = straight ahead of the driver (−z rotated by yaw0), so the sun is in front: gorgeous backlight
     this.sunDir.set(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el)).normalize();
+    // rotate the HDRI so its baked-in sun lines up with our sun (no stray reflection blob)
+    const key = this.envKeys?.[look.env];
+    if (key && this.scene.environmentRotation) {
+      const hdriAz = Math.atan2(key[0], key[2]);
+      const ourAz = Math.atan2(this.sunDir.x, this.sunDir.z);
+      this.scene.environmentRotation.set(0, ourAz - hdriAz, 0);
+    }
     this.sun.color.set(s.color || '#ffffff');
     this.sun.intensity = s.intensity ?? 3;
     const fog = look.fog || {};

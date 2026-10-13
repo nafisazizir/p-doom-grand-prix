@@ -13,7 +13,7 @@ export class Particles {
   constructor(scene) {
     const mat = new THREE.MeshBasicMaterial({ toneMapped: false });
     mat.userData.outlineParameters = { visible: false };
-    this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, MAX);
+    this.mesh = new THREE.InstancedMesh(new THREE.OctahedronGeometry(0.6, 0), mat, MAX);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false;
     this.mesh.setColorAt(0, new THREE.Color());
@@ -36,11 +36,11 @@ export class Particles {
     this.v[i * 3] = vel.x; this.v[i * 3 + 1] = vel.y; this.v[i * 3 + 2] = vel.z;
     this.life[i] = life; this.max[i] = life; this.size[i] = size; this.grav[i] = grav;
     this.rot[i] = Math.random() * 6;
-    this.mesh.setColorAt(i, _c.set(color));
+    this.mesh.setColorAt(i, _c.set(color).multiplyScalar(2.2)); // HDR so sparks bloom
     this.mesh.instanceColor.needsUpdate = true;
   }
 
-  burst(pos, colors, n = 18, { speed = 8, life = 0.7, size = 0.28, grav = -14, up = 4, carry = 0 } = {}) {
+  burst(pos, colors, n = 18, { speed = 8, life = 0.7, size = 0.16, grav = -14, up = 4, carry = 0 } = {}) {
     for (let k = 0; k < n; k++) {
       const a = Math.random() * Math.PI * 2, b = Math.random() * Math.PI - Math.PI / 2;
       const s = speed * (0.4 + Math.random() * 0.6);

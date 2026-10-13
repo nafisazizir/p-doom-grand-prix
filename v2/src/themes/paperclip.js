@@ -299,6 +299,11 @@ function poolMat() {
   _poolMat.color.multiplyScalar(0.55);
   return _poolMat;
 }
+const _cones = new Map();
+function openCone(key, r, h) {
+  if (!_cones.has(key)) _cones.set(key, new THREE.ConeGeometry(r, h, 24, 1, true));
+  return _cones.get(key);
+}
 let _beamTex = null;
 function beamMat(color, k) {
   _beamTex ||= canvasTex('beam', 8, 128, (g, w, h) => {
@@ -341,7 +346,7 @@ function lamp(side) {
     return r;
   });
   _coneMat ||= beamMat('#ffb060', 0.085);
-  const cone = mesh(G.cone(4.2, 9.6, 24), _coneMat, -side * 4.1, 4.9, 0);
+  const cone = mesh(openCone('lamp', 4.2, 9.6), _coneMat, -side * 4.1, 4.9, 0);
   g.add(cone);
   const pool = mesh(G.plane(15, 13), poolMat(), -side * 5.2, 0.06, 0);
   pool.rotation.x = -Math.PI / 2;
@@ -435,8 +440,8 @@ function bomb() {
   body.add(collar);
   const wick = new THREE.TubeGeometry(new THREE.CatmullRomCurve3([[0, 4.4, 0], [0.3, 5.4, 0.4], [1.2, 5.6, 1.2], [2.4, 5.0, 2.0]].map((p) => new THREE.Vector3(...p))), 20, 0.12, 8, false);
   body.add(new THREE.Mesh(wick, glow('#ffd27a', { intensity: 0.6 })));
-  const lbl = textFace(['P(DOOM)'], 5.6, 1.7, { bg: null, fg: '#ffffff', border: null, borderW: 0, weight: 900, stroke: '#16161e', strokeW: 6 }, { emissive: 0.7, transparent: true });
-  lbl.position.set(0, 0.2, 3.62);
+  const lbl = textFace(['P(DOOM)'], 4.8, 1.45, { bg: null, fg: '#ffffff', border: null, borderW: 0, weight: 900, stroke: '#16161e', strokeW: 6 }, { emissive: 0.7, transparent: true });
+  lbl.position.set(0, 0.2, 3.95);
   body.add(lbl);
   const hl = mesh(G.sphere(0.7, 14), glow('#9ab0ff', { intensity: 0.9, transparent: true, opacity: 0.5 }), -1.5, 1.7, 3.0);
   hl.scale.set(1, 0.6, 0.4);
@@ -619,7 +624,7 @@ function stage() {
   bot.add(arm);
   g.add(bot);
   // spotlight beam + floor pool
-  const beam = mesh(G.cone(2.2, 8.6, 28), beamMat('#fff0c8', 0.22), -0.3, 6.0, 1.2);
+  const beam = mesh(openCone('spot', 2.2, 8.6), beamMat('#fff0c8', 0.1), -0.3, 6.0, 1.2);
   g.add(beam);
   const pool = mesh(G.plane(5, 5), poolMat(), -0.3, 1.33, 0.8);
   pool.rotation.x = -Math.PI / 2;

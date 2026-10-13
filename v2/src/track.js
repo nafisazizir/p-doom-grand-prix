@@ -75,6 +75,27 @@ export class Track {
     const amp = (look?.hills ?? 1) * (a < H + 8 ? 0 : a < 40 ? (a - H - 8) / (40 - H - 8) * 6 : a < 120 ? 6 + (a - 40) * 0.35 : 34 + (a - 120) * 0.45);
     return Math.min(amp, 48 * (look?.hills ?? 1)) * (fbm(s * 0.006 + (lat > 0 ? 50 : 0), a * 0.012) - 0.25);
   }
+  /** how far terrain may extend sideways before it would reach over another part of the course */
+  _clearance(s, side) {
+    const C = this.course;
+    if (!this._pts) {
+      this._pts = [];
+      for (let q = C.s0; q < C.s1; q += 8) { const f = C.frame(q, {}); this._pts.push([q, f.x, f.y, f.z]); }
+    }
+    const f = C.frame(s, _frC);
+    const rx = Math.cos(f.yaw) * side, rz = Math.sin(f.yaw) * side;
+    let best = 1e9;
+    for (const [q, x, y, z] of this._pts) {
+      if (Math.abs(q - s) < 140 || Math.abs(y - f.y) > 70) continue;
+      const dx = x - f.x, dz = z - f.z;
+      const u = dx * rx + dz * rz;
+      if (u <= 0) continue;
+      const v = Math.abs(dx * rz - dz * rx);
+      if (v < u * 0.8 + 30) best = Math.min(best, u * 0.5 - 6);
+    }
+    return Math.max(H + 6, best);
+  }
+
   /** worst-case curvature (rad/unit) around s, signed (+ = turning right) */
   _curv(s) {
     const C = this.course;
@@ -103,6 +124,10 @@ export class Track {
     }
     if (m.kind === 'highway') return this._groundBase(s, m.f.highway) + this._hills(s, lat, look) * 0.6;
     if (m.cliff && Math.sign(lat) === m.cliff && Math.abs(lat) > H + 1) return f.y - 60;
+    if (m.f.tunnel && Math.abs(lat) > TUNNEL_W - 2) {
+      const a = Math.abs(lat), u = Math.min(1, (a - TUNNEL_W + 2) / 45);
+      return f.y + 19 * (1 - u * u) + this._hills(s, lat, lookFor(this.themeAtZ(s))) * u;
+    }
     const a = Math.abs(lat);
     const emb = a <= H + 1.2 ? 0.05 : -0.25;
     // match the banked road edge, fading back to level ground further out
@@ -204,7 +229,7 @@ export class Track {
           // on the inside of tight turns, stop the terrain before it folds over itself
           const kap = this._curv(s);
           const inner = kap !== 0 && Math.sign(kap) === side;
-          const maxA = inner ? Math.max(H + 4, 0.8 / Math.abs(kap)) : 1e9;
+          const maxA = Math.min(inner ? Math.max(H + 4, 0.8 / Math.abs(kap)) : 1e9, this._clearance(s, side));
           for (const a0 of lats) {
             const a = Math.min(a0, maxA + (a0 - H) * 0.001);
             const lat = side * a;
@@ -342,6 +367,11 @@ export class Track {
     const prof = () => [[-W, -0.2], [-W, 10], [-W * 0.75, 14.5], [-W * 0.35, 16.5], [0, 17], [W * 0.35, 16.5], [W * 0.75, 14.5], [W, 10], [W, -0.2]].reverse();
     const m = this._sweep(sA, sB, 3, prof, wallMat, { name: 'tunnel' });
     if (m) { m.material = m.material.clone(); m.material.side = THREE.DoubleSide; }
+    // outer shell: the tunnel is buried in a grassy hill, so from outside it's a mound, not a grey tube
+    const look = lookFor(this.themeAtZ(sA + 1));
+    const shellMat = surface(look.ground?.tex || 'grass', { tint: look.ground?.tint || '#8fc070', scale: look.ground?.scale || 6 });
+    const shell = this._sweep(sA + 4, sB - 4, 4, () => [[-W - 3, 17], [-W * 0.6, 20.5], [0, 21.5], [W * 0.6, 20.5], [W + 3, 17]], shellMat, { name: 'tunnelShell', shadow: false });
+    if (shell) { shell.material = shell.material.clone(); shell.material.side = THREE.DoubleSide; }
     // floor between the road and the walls
     const floor = toon(f.fire ? '#2a1a18' : '#1c2830', { roughness: 0.6, metalness: 0.3 });
     for (const side of [-1, 1]) this._sweep(sA, sB, 3, () => (side < 0 ? [[-W, -0.2], [-H - 1.3, 0.02]] : [[H + 1.3, 0.02], [W, -0.2]]), floor, { name: 'tfloor', shadow: false });

@@ -962,6 +962,8 @@ function viewer() {
     return g;
   });
 }
+let _openCone = null;
+const openCone = (r, h) => (_openCone ||= new THREE.ConeGeometry(r, h, 24, 1, true));
 function lighthouse() {
   const g = bake('lighthouse', () => {
     const r = new THREE.Group();
@@ -993,7 +995,8 @@ function lighthouse() {
   });
   const bm = new THREE.MeshBasicMaterial({ map: btex, color: new THREE.Color('#fff0c0').multiplyScalar(0.35), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
   for (const s of [-1, 1]) {
-    const c = mesh(G.cone(7, 110, 24, true), bm, s * 55, 0, 0);
+    const c = new THREE.Mesh(openCone(7, 110), bm);
+    c.position.x = s * 55;
     c.rotation.z = s * Math.PI / 2;
     beam.add(c);
   }
