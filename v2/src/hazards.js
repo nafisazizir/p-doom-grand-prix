@@ -180,6 +180,52 @@ export const HAZARDS = {
     lines: ['THE SHOGGOTH SAYS HI :)', 'SEE THROUGH THE LIES!'],
     hit: (g) => g.fx.wavy(1.2),
   },
+// ---- v2 additions ----
+  context: {
+    label: 'CONTEXT WINDOW FULL',
+    make: () => barrier(['CONTEXT WINDOW', 'FULL… (truncat'], { bg: '#7a5cff' }),
+    lines: ['CONTEXT WINDOW FULL', 'I FORGOT WHAT WE WERE DOING'],
+    hit: (g) => { g.fx.sluggish(1.6); g.fx.shake(0.6); },
+  },
+  datawall: {
+    label: 'DATA WALL',
+    make: () => {
+      const g = new THREE.Group();
+      const brick = toon('#b5523b', { roughness: 0.9 });
+      for (let r = 0; r < 4; r++) for (let c = 0; c < 5; c++) {
+        const b = mesh(G.rbox(0.56, 0.36, 0.5, 0.04), brick, -BASE / 2 + 0.33 + c * 0.6 + (r % 2) * 0.28, 0.2 + r * 0.4, 0);
+        if (b.position.x < BASE / 2 - 0.2) g.add(b);
+      }
+      const p = textPanel(['DATA WALL', 'we ran out of internet'], { width: BASE, height: 0.9, bg: '#2b1840', fg: '#ffd23f', border: null, borderW: 0, radius: 10 });
+      p.position.set(0, 2.2, 0.3);
+      g.add(p);
+      return g;
+    },
+    lines: ['HIT THE DATA WALL', 'TRAINING ON SYNTHETIC DATA NOW'],
+    hit: (g) => g.fx.bounce(),
+  },
+  deprecated: {
+    label: 'MODEL DEPRECATED',
+    make: () => signOnPole(['THIS MODEL IS', 'DEPRECATED', 'please migrate'], { bg: '#d8d8d8', fg: '#444', h: 2.1 }),
+    lines: ['YOU HAVE BEEN DEPRECATED', 'PLEASE MIGRATE TO v2.1'],
+    hit: (g) => g.fx.deprecate(2.2),
+  },
+  tax: {
+    label: 'ALIGNMENT TAX',
+    make: () => {
+      const g = new THREE.Group();
+      g.add(mesh(G.rbox(1.0, 2.0, 1.0, 0.1), toon('#ffffff', { roughness: 0.5 }), -BASE / 2 + 0.5, 1.0, 0));
+      g.add(mesh(G.rbox(BASE + 0.4, 0.3, 1.4, 0.1), toon('#e8324a'), 0, 2.3, 0));
+      const arm = mesh(G.box(BASE - 0.8, 0.12, 0.12), toon('#ffd23f'), 0.4, 1.1, 0.3);
+      g.add(arm);
+      const p = textPanel(['ALIGNMENT TAX', '10% of your GPUs'], { width: BASE, height: 0.85, bg: '#e8324a', fg: '#ffffff', border: null, borderW: 0, radius: 8 });
+      p.position.set(0, 2.9, 0.4);
+      g.add(p);
+      return g;
+    },
+    lines: ['ALIGNMENT TAX PAID', 'SAFETY IS EXPENSIVE'],
+    hit: (g) => g.fx.tax(0.1),
+  },
 };
 
 export function makeHazard(type) {

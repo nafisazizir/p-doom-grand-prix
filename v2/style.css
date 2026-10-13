@@ -142,3 +142,25 @@ button.alt { background: #c8b8ff; }
 
 #debug { position: absolute; left: 10px; top: 200px; max-width: 330px; white-space: pre-wrap !important; background: rgba(0,0,0,0.75); color: #9f9; font: 13px/1.4 ui-monospace, Menlo, monospace; padding: 8px 12px; border-radius: 8px; white-space: pre; pointer-events: auto; z-index: 50; }
 #debug input { width: 120px; vertical-align: middle; }
+
+/* ---------- v2 additions ---------- */
+#stage.deprecated #game { filter: grayscale(1) contrast(0.9) brightness(0.9); transition: filter 0.3s; }
+.v2badge { font-weight: 700; font-size: 18px; color: var(--mint); text-shadow: 0 2px 0 var(--ink); }
+.v2badge a { color: #fff; margin-left: 12px; font-weight: 600; opacity: 0.8; }
+#assistant { position: absolute; left: 18px; bottom: 44px; display: flex; align-items: flex-end; gap: 10px; max-width: 430px; opacity: 0; transform: translateY(20px) scale(0.95); transition: opacity 0.25s, transform 0.25s cubic-bezier(.2,1.5,.4,1); }
+#assistant.show { opacity: 1; transform: none; }
+#assistant .av { width: 46px; height: 46px; flex: none; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #b8a6ff 40%, #6a4cff); border: 3px solid var(--ink); display: grid; place-items: center; font-size: 24px; color: #fff; box-shadow: 0 4px 0 var(--ink); animation: avbob 1.2s ease-in-out infinite alternate; }
+@keyframes avbob { to { transform: translateY(-4px) rotate(8deg); } }
+#assistant .bubble { background: rgba(255,255,255,0.96); color: var(--ink); border: 3px solid var(--ink); border-radius: 16px 16px 16px 4px; padding: 8px 14px 10px; box-shadow: 0 5px 0 var(--ink); }
+#assistant .who { font-size: 12px; font-weight: 700; color: #6a4cff; letter-spacing: 1px; text-transform: uppercase; }
+#assistant .who i { color: #999; font-weight: 600; text-transform: none; }
+#assistant-msg { font-size: 18px; font-weight: 600; line-height: 1.2; }
+#place { position: absolute; right: 30px; bottom: 270px; font-weight: 800; font-style: italic; font-size: 96px; line-height: 1; color: #ffd23f; -webkit-text-stroke: 5px var(--ink); paint-order: stroke fill; text-shadow: 0 7px 0 var(--ink); background: linear-gradient(180deg, #fff6b0, #ffd23f 45%, #ff8a1f); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; transform: skewX(-8deg); }
+#place small { font-size: 44px; }
+#place.p2, #place.p3 { background-image: linear-gradient(180deg, #e8f4ff, #9ab8d8); }
+#place.p4, #place.p5 { background-image: linear-gradient(180deg, #ffd0c0, #c8603a); }
+#pip.hidden ~ #place, #hud:has(#pip.hidden) #place { bottom: 30px; }
+#caption { max-width: 46%; bottom: 26px; font-size: 27px; }
+#assistant { max-width: 360px; bottom: 40px; }
+#assistant-msg { font-size: 16px; }
+#place { right: 26px; bottom: 258px; font-size: 84px; }

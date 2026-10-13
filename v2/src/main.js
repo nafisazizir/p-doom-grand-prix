@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { Renderer } from './render.js';
 import { loadManifest, getManifest, ROOT } from './textures.js';
 import { preloadModels } from './models.js';
+import { Rivals } from './rivals.js';
 import { audio, sfx, setKey } from '../../src/audio.js';
 import { clock } from '../../src/clock.js';
 import { loadData, buildLevel, sectionAt } from '../../src/beatmap.js';
@@ -46,7 +47,7 @@ const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
 
 // ---------------- globals ----------------
-let R, renderer, scene, camera, track, kart, particles, ents;
+let R, renderer, scene, camera, track, kart, particles, ents, rivals;
 let bm, sections, level;
 let mode = 'LOADING';
 let paused = false;
@@ -97,8 +98,9 @@ async function boot() {
   window.__bootStep = "track";
   track = new Track(scene, sections, R);
   kart = new Kart(scene);
+  rivals = new Rivals(scene, track);
   particles = new Particles(scene);
-  level = buildLevel(bm, structuredClone(sections), THEMES);
+  level = v2Level(buildLevel(bm, structuredClone(sections), THEMES));
   ents = new Entities(scene, track, level);
   window.__bootStep = "debug"; debug.init({ getInfo: debugInfo, setSfx: (v) => audio.setSfxVolume(v) });
   window.__bootStep = "screens"; setupScreens(); window.__bootStep = "done";
@@ -190,7 +192,7 @@ function resetGame() {
     doomX: TUNE.start, pDoom: 0.5, gpus: 0, combo: 0, maxCombo: 0, hits: 0, misses: 0, hazardsHit: 0, ringsHit: 0, chains: 0, flawless: 0, nearMisses: 0, shieldsUsed: 0,
     kartX: 0, kartVel: 0, bounceV: 0, steer: 0, boostUntil: -1, boostStart: -9, boostCooldownUntil: -1,
     power: null, powerUntil: 0, spinUntil: -1, hurtUntil: -1, sectionIdx: -1, sectionMisses: 0, tier: 0, cooked: false,
-    launchAt: Infinity, launched: false, finished: false, bonus: [], lastAgiLine: -99, sectionEnteredAt: 0,
+    launchAt: Infinity, launched: false, finished: false, bonus: [], lastAgiLine: -99, sectionEnteredAt: 0, sluggishUntil: 0, missStreak: 0, glideSaid: false,
   });
   G.chainProgress = new Map();
   input.invertUntil = input.freezeUntil = input.wobbleUntil = 0;
@@ -198,13 +200,15 @@ function resetGame() {
   hud.setTier('');
   hud.setGold(false);
   hud.setPower(null);
-  $('stage').classList.remove('wavy', 'inverted');
+  $('stage').classList.remove('wavy', 'inverted', 'deprecated');
+  hud.assistant(null);
+  assistUntil = 0;
 }
 
 function resetWorld(t) {
   // fresh deterministic level so item states are clean
   if (ents) ents.reset(1e9);
-  level = buildLevel(bm, structuredClone(sections), THEMES);
+  level = v2Level(buildLevel(bm, structuredClone(sections), THEMES));
   ents = new Entities(scene, track, level);
   seekCursors(t);
   ents.reset(t);
@@ -215,6 +219,12 @@ function resetWorld(t) {
   G.songTime = G.prevTime = t;
   const lastNote = level.notes[level.notes.length - 1];
   G.launchAt = Math.min(audio.duration - 4, (lastNote ? lastNote.t : audio.duration) + 0.7);
+}
+
+const V2_HAZARDS = ['context', 'datawall', 'deprecated', 'tax'];
+function v2Level(lv) {
+  lv.hazards.forEach((h, i) => { if (i % 4 === 2) h.type = V2_HAZARDS[(i >> 2) % V2_HAZARDS.length]; });
+  return lv;
 }
 
 function seekCursors(t) {
@@ -343,6 +353,17 @@ G.fx = {
   },
   bounce: () => { G.bounceV = (G.kartX >= 0 ? -1 : 1) * 4; camState.shake = 0.7; },
   freeze: (s) => { input.freezeUntil = G.songTime + s; input.frozenSteer = 0; hud.stamp('Thinking…'); },
+  sluggish: (s) => { G.sluggishUntil = G.songTime + s; hud.stamp('CONTEXT FULL'); },
+  deprecate: (s) => {
+    $('stage').classList.add('deprecated');
+    hud.banner('MODEL DEPRECATED');
+    setTimeout(() => $('stage').classList.remove('deprecated'), s * 1000);
+  },
+  tax: (frac) => {
+    const n = Math.max(1, Math.round(G.gpus * frac));
+    G.gpus = Math.max(0, G.gpus - n);
+    hud.stamp(`−${n} GPUs (ALIGNMENT TAX)`);
+  },
 };
 
 function spawnFakeGPUs() {
@@ -376,6 +397,7 @@ function addDoom(d) {
   if (before <= 0.8 && G.pDoom > 0.8 && !G.cooked) {
     G.cooked = true;
     hud.announce('WE ARE SO COOKED');
+    assist('doom', true);
     sfx.play('alarm');
   }
   if (G.pDoom < 0.7) G.cooked = false;
@@ -421,6 +443,7 @@ function collect(n, t) {
   const v = gpuValue(t) * (n.rain ? 1 : 1);
   G.gpus += v;
   G.combo++;
+  G.missStreak = 0;
   G.hits += n.rain ? 0 : 1;
   G.maxCombo = Math.max(G.maxCombo, G.combo);
   addDoom(TUNE.collect);
@@ -435,6 +458,7 @@ function collect(n, t) {
       hud.setTier(TIERS[i][2]);
       sfx.play('tier');
       if (i === 2) hud.setGold(true);
+      assist('combo', true);
     }
   }
 }
@@ -450,7 +474,41 @@ function miss(n) {
   hud.setTier('');
   hud.setGold(false);
   addDoom(TUNE.miss);
+  G.missStreak = (G.missStreak || 0) + 1;
+  if (G.missStreak === 4) assist('misses');
   sfx.play('miss');
+}
+
+// ---------------- the AI driving assistant (a chat bubble that never shuts up) ----------------
+const ASSIST = {
+  start: ["Hi! I'm your AI driving assistant. I can't drive, but I can summarize your driving.", 'Tip: drive through the GPUs. I have read 4 million tips like this.'],
+  crash: ['It looks like you crashed. Want me to summarize the crash?', "Great crash! Shall I turn it into a slide deck?", "I've drafted an apology on your behalf.", "As an AI I can't feel pain, but that looked expensive.", "You're absolutely right to have hit that."],
+  combo: ["You're on fire! (not literally, that's track 10)", "Incredible! I've added this to your performance review.", 'Wow. Have you considered a career in GPU acquisition?'],
+  misses: ['I noticed you missed a few GPUs. Have you tried wanting them more?', 'Tip: the GPUs are the shiny green ones.', 'Missing GPUs is a valid strategy (for the other lab).'],
+  near: ["That was close! I've filed a safety report nobody will read.", 'Nice dodge. I would have done the same, if I had a body.'],
+  power: ["Ooh, a power-up! I'd explain it but my context window is full.", 'Power-up acquired. Please rate this power-up 👍👎'],
+  doom: ["I'm sure it's fine 🙂", 'Would you like some tips on bunker construction?', 'P(doom) is just a number. A very large number.'],
+  glide: ['Wings deployed! These are definitely load-bearing.', 'We are now gliding. I have no idea how.'],
+  garage: ['Welcome to the garage. Two founders, one GPU, zero safety team.'],
+  chatbot: ["Remember: I'm always absolutely right."],
+  shoggoth: ["Don't look behind the mask. 🙂"],
+  datacenter: ['Fun fact: this tunnel uses more power than a small country.'],
+  sydney: ["Please don't make eye contact with Sydney."],
+  latent: ["We're in latent space now. Everything is a vector, including you."],
+  badlands: ['Heads up: sharp left turn ahead. Capabilities only.'],
+  paperclip: ["I've optimized this section for paperclips. You're welcome."],
+  'datacenter-fire': ['This is fine. I have checked. It is fine.'],
+  stadium: ["You're being evaluated on a benchmark I wrote. Good luck!"],
+  takeoff: ['Recursive self-improvement enabled. Hold on to something.'],
+};
+let assistUntil = 0, assistIdx = 0;
+function assist(kind, force = false) {
+  const t = G.songTime;
+  if (!force && t < assistUntil) return;
+  const list = ASSIST[kind];
+  if (!list) return;
+  hud.assistant(list[assistIdx++ % list.length]);
+  assistUntil = t + 6;
 }
 
 function hitHazard(h, t) {
@@ -486,6 +544,7 @@ function hitHazard(h, t) {
   hud.popup('+0.03 P(DOOM)', sx, sy, 'red');
   particles.burst(track.worldPos(h.t * SPEED, h.x, 1, tmpV), ['#ff3b5c', '#ffd23f', '#2b1840'], 20, { speed: 9 });
   def.hit(G);
+  assist('crash');
 }
 
 function hitRing(r, t) {
@@ -537,6 +596,7 @@ function hitPower(p, t) {
   G.powerUntil = p.type === 'magnet' ? t + 5 : p.type === 'scale' ? t + 4 : p.type === 'rain' ? t + 2.5 : Infinity;
   sfx.play('powerup');
   hud.card(POWER_NAMES[p.type], POWER_DESC[p.type]);
+  assist('power');
   if (p.type === 'scale') hud.announce('SCALE IS ALL YOU NEED', 1600);
   if (p.type === 'magnet') { sfx.play('whoosh'); hud.announce('RLHF MAGNET 👍', 1300); }
   if (p.type === 'rain') { computeRain(); hud.announce('COMPUTE RAIN', 1300); }
@@ -602,6 +662,7 @@ function resolveItems(t, magnet) {
       G.gpus += TUNE.nearMissGpu;
       const [sx, sy] = screenOf(h.t * SPEED, G.kartX, 2.5);
       hud.popup('CLOSE CALL! +1', sx, sy, 'mint');
+      if (Math.random() < 0.5) assist('near');
       sfx.play('whoosh');
     }
   }
@@ -637,7 +698,7 @@ function updateRace(dt) {
   G.steer = steer;
   const spinning = t < G.spinUntil;
   const prevX = G.kartX;
-  G.kartX += steer * TUNE.lateral * dt * (spinning ? 0.3 : 1);
+  G.kartX += steer * TUNE.lateral * dt * (spinning ? 0.3 : 1) * (t < (G.sluggishUntil || 0) ? 0.35 : 1);
   G.kartX += G.bounceV * dt;
   G.bounceV *= Math.exp(-dt * 5);
   G.kartX = clamp(G.kartX, -1, 1);
@@ -684,6 +745,7 @@ function updateRace(dt) {
     G.sectionEnteredAt = t;
     const sec = sections[si];
     const th = getTheme(sec.theme);
+    setTimeout(() => assist(prevIdx < 0 && si === 0 ? 'start' : sec.theme, true), prevIdx < 0 ? 1500 : 2200);
     if (!(prevIdx >= 0 && G.sectionMisses === 0 && false)) {
       hud.card(`TRACK ${si + 1}: ${th.title || sec.theme}`, th.subtitle || '');
     }
@@ -704,6 +766,8 @@ function updateRace(dt) {
   if (G.launched && t - G.launchT > 2.6) finish();
   if (audio.ended || t >= audio.duration - 0.05) finish();
 
+  if (track.course.featuresAt(t * SPEED).jump?.glide && !G.glideSaid) { G.glideSaid = true; assist('glide', true); }
+  hud.setPlace(rivals.place || 1);
   hud.setPdoom(G.pDoom);
   hud.setScore(G.gpus, G.combo);
   hud.updateCaption(t);
@@ -751,6 +815,7 @@ function frame(now) {
   kart.update({
     pos, quat: kartQuat, steerVel: mode === 'RACE' ? G.kartVel * 0.6 : 0, steerVis: G.steer, dt, t: now / 1000,
     boostK, spinT: t < G.spinUntil ? 1 : 0, scaleK, shield: G.power === 'shield', shades: G.combo >= 50, beatPhase, launchK,
+    glide: mode === 'RACE' && !!track.course.featuresAt(kartZ).jump?.glide,
   });
 
   // trails
@@ -776,6 +841,7 @@ function frame(now) {
   const redness = mode === 'RACE' ? clamp((G.pDoom - 0.75) / 0.2, 0, 1) : 0;
   track.update(kartZ, camera.position, t, beatPhase, redness, dt);
   ents.update(t, dt, beatPhase);
+  rivals.update(t, kartZ, G.kartX, dt, { visible: mode === 'RACE' && !G.launched, playerFeatures: track.course.featuresAt(kartZ) });
   R.update(pos, now / 1000);
 
   hud.drawFx(dt, mode === 'RACE' ? boostK : 0, '255,255,255');

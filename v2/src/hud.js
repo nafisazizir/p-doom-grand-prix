@@ -20,7 +20,7 @@ export const hud = {
   lines: [],
 
   init() {
-    for (const id of ['hud', 'pdoom', 'pdoom-fill', 'gpus', 'combo', 'combo-tier', 'announce', 'card', 'card-title', 'card-sub', 'caption', 'warn', 'pip', 'pip-canvas', 'wheel', 'popups', 'splats', 'stamp', 'banner', 'power', 'power-name', 'power-fill', 'redwash', 'goldframe', 'flash', 'fx', 'kbd-hint', 'stage']) {
+    for (const id of ['hud', 'pdoom', 'pdoom-fill', 'gpus', 'combo', 'combo-tier', 'announce', 'card', 'card-title', 'card-sub', 'caption', 'warn', 'pip', 'pip-canvas', 'wheel', 'popups', 'splats', 'stamp', 'banner', 'power', 'power-name', 'power-fill', 'redwash', 'goldframe', 'flash', 'fx', 'kbd-hint', 'stage', 'assistant', 'assistant-msg', 'place']) {
       this.el[id] = $(id);
     }
     this.fx = this.el.fx.getContext('2d');
@@ -52,6 +52,23 @@ export const hud = {
       if (combo > this.lastCombo) restartAnim(this.el.combo, 'bump');
       this.lastCombo = combo;
     }
+  },
+  assistant(text) {
+    const a = this.el.assistant;
+    if (!a) return;
+    clearTimeout(this._assistT);
+    if (!text) { a.classList.remove('show'); return; }
+    this.el['assistant-msg'].textContent = text;
+    a.classList.remove('show'); void a.offsetWidth; a.classList.add('show');
+    this._assistT = setTimeout(() => a.classList.remove('show'), 5200);
+  },
+  setPlace(n) {
+    if (!this.el.place || n === this._place) return;
+    this._place = n;
+    const suf = n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th';
+    this.el.place.innerHTML = `${n}<small>${suf}</small>`;
+    this.el.place.className = 'p' + n;
+    restartAnim(this.el.place, 'p' + n);
   },
   setTier(text) { this.el['combo-tier'].textContent = text || ''; },
   setGold(on) { this.el.goldframe.classList.toggle('on', on); },

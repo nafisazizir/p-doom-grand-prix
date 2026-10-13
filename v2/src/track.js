@@ -413,6 +413,10 @@ export class Track {
     for (let x = 0; x < 16; x++) for (let y = 0; y < 2; y++) { g.fillStyle = (x + y) % 2 ? '#111' : '#f4f4f4'; g.fillRect(x * 16, y * 16, 16, 16); }
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(1 / (2 * H), 1 / 2.25);
+    t.offset.set(0.5, 0);
+    t.magFilter = THREE.NearestFilter;
     const m = new THREE.MeshStandardMaterial({ map: t, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -3 });
     this._sweep(-2, 2, 2, () => [[-H, 0.03], [H, 0.03]], m, { name: 'startline', shadow: false });
   }
@@ -482,6 +486,16 @@ export class Track {
         if (!this.gates.has(i)) { const gate = this._makeGate(i); this.gates.set(i, gate); this.scene.add(gate); }
       } else if (this.gates.has(i)) { this.scene.remove(this.gates.get(i)); this.gates.delete(i); }
     }
+    // live-stat billboard: one reusable board that roasts the player's actual run
+    if (!this.liveBB) this._makeLiveBB();
+    if (this.liveBBz < kartZ - BEHIND || this.liveBBz === undefined) {
+      let z = kartZ + FAR - 10;
+      const f = this.course.featuresAt(z);
+      if (!f.jump && !f.bridge && !f.tunnel && !f.rainbow && !f.space && !f.cliff && !f.highway) {
+        this.liveBBz = z;
+        this._placeLiveBB(z);
+      } else this.liveBBz = kartZ + 40; // try again shortly
+    }
     for (const a of this.active) if (a.theme.animate) a.theme.animate(a.obj, a.kind, t, beatPhase, a);
     for (const [, gate] of this.gates) gate.userData.lights?.forEach((l, k) => { l.visible = Math.floor(t * 8 + k) % 2 === 0; });
     this.pal.skyTop.set(look.fog?.color || '#ffffff');
@@ -527,6 +541,55 @@ export class Track {
     this.active.push({ obj, key, zf, theme: th, kind: p.kind, data: p.data, seed: (zf * 13.37) % 1 });
   }
 
+  _makeLiveBB() {
+    const c = document.createElement('canvas');
+    c.width = 1024; c.height = 512;
+    this.liveCanvas = c;
+    this.liveTex = new THREE.CanvasTexture(c);
+    this.liveTex.colorSpace = THREE.SRGBColorSpace;
+    const g = new THREE.Group();
+    const pm = MAT.metal('#8a90a0');
+    for (const x of [-4.5, 4.5]) g.add(mesh(G.box(0.4, 6, 0.4), pm, x, 3, 0));
+    g.add(mesh(G.rbox(13, 6.8, 0.5, 0.15), MAT.paint('#1a1030'), 0, 9, -0.3));
+    const scr = new THREE.Mesh(G.plane(12.2, 6.1), new THREE.MeshBasicMaterial({ map: this.liveTex }));
+    scr.material.color.setScalar(1.25);
+    scr.position.set(0, 9, 0);
+    g.add(scr);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    this.liveBB = g;
+    this.liveIdx = 0;
+    this.scene.add(g);
+  }
+  _placeLiveBB(z) {
+    const G2 = globalThis.GAME || {};
+    const acc = G2.hits + G2.misses > 0 ? Math.round((G2.hits / (G2.hits + G2.misses)) * 100) : 100;
+    const msgs = [
+      ['LIVE: THIS DRIVER', `${G2.gpus || 0} GPUs ACQUIRED`, 'investors: cautiously thrilled'],
+      ['CURRENT P(DOOM)', (G2.pDoom ?? 0.5).toFixed(2), (G2.pDoom ?? 0.5) > 0.5 ? 'please drive better' : 'humanity is cautiously optimistic'],
+      ['DRIVER EVAL', `ACCURACY: ${acc}%`, acc > 90 ? 'suspiciously good. benchmark leak?' : 'needs more RLHF'],
+      ['HALLUCINATIONS', `${G2.hazardsHit || 0} THIS RUN`, 'industry average: yes'],
+      ['MAX COMBO', `x${G2.maxCombo || 0}`, 'tokens per second: ' + (G2.maxCombo > 20 ? 'YES' : 'some')],
+    ];
+    const [a, b, c] = msgs[this.liveIdx++ % msgs.length];
+    const g = this.liveCanvas.getContext('2d');
+    const grd = g.createLinearGradient(0, 0, 0, 512);
+    grd.addColorStop(0, '#2a1458'); grd.addColorStop(1, '#0e0620');
+    g.fillStyle = grd; g.fillRect(0, 0, 1024, 512);
+    g.fillStyle = 'rgba(255,255,255,0.05)';
+    for (let y = 0; y < 512; y += 6) g.fillRect(0, y, 1024, 2);
+    g.textAlign = 'center';
+    g.fillStyle = '#ff5ca8'; g.font = "700 64px Fredoka, sans-serif"; g.fillText('● ' + a, 512, 110);
+    g.fillStyle = '#ffd23f'; g.font = "700 150px Fredoka, sans-serif"; g.fillText(b, 512, 290, 980);
+    g.fillStyle = '#c8b8ff'; g.font = "600 52px Fredoka, sans-serif"; g.fillText(c, 512, 410, 980);
+    this.liveTex.needsUpdate = true;
+    const fr = this.course.frame(z, _fr);
+    const side = this.liveIdx % 2 ? 1 : -1;
+    const lat = side * (H + 9);
+    const ty = this.terrainY(z, lat) ?? fr.y;
+    this.liveBB.position.set(fr.x + Math.cos(fr.yaw) * lat, ty, fr.z + Math.sin(fr.yaw) * lat);
+    this.liveBB.rotation.y = -fr.yaw - side * 0.35;
+  }
+
   _makeGate(i) {
     const sec = this.sections[i];
     const th = getTheme(sec.theme);
@@ -567,6 +630,7 @@ export class Track {
     this.nextPropZ = Math.max(this.course.s0, kartZ - BEHIND);
     this.nextBillboardZ = Math.max(60, kartZ + 40);
     this.lookKey = '';
+    this.liveBBz = undefined;
   }
 }
 
