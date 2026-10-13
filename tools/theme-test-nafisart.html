@@ -1,0 +1,85 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"../vendor/three/build/three.module.js","three/addons/":"../vendor/three/examples/jsm/"}}</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
+import { makeRng, hashSeed, toon } from '../src/toolkit.js';
+import latent from '../src/themes/latent.js';
+import stadium from '../src/themes/stadium.js';
+import { billboard } from '../src/toolkit.js';
+const q = new URLSearchParams(location.search);
+const th = q.get('theme') === 'stadium' ? stadium : latent;
+const mode = q.get('mode') || 'layout';
+const T = +(q.get('t') || 0.3), bp = +(q.get('bp') || 0.02);
+const sec = th.id === 'latent' ? { id: 's6', start: 59.4, end: 74 } : { id: 's11', start: 124.9, end: 141 };
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(1280, 720);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const P = th.palette;
+scene.fog = new THREE.Fog(P.fog || P.skyBottom, 70, 230);
+const skyMat = new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: { top: { value: new THREE.Color(P.skyTop) }, bottom: { value: new THREE.Color(P.skyBottom) } },
+  vertexShader: `varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `uniform vec3 top; uniform vec3 bottom; varying vec3 vP; void main(){ float h = clamp(vP.y*1.6+0.15,0.,1.); gl_FragColor = vec4(mix(bottom, top, smoothstep(0.,1.,h)),1.); }` });
+skyMat.userData.outlineParameters = { visible: false };
+const sky = new THREE.Mesh(new THREE.SphereGeometry(600, 32, 16), skyMat);
+scene.add(sky);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444466, 1.6));
+const dl = new THREE.DirectionalLight(0xffffff, 1.8); dl.position.set(5, 10, 7); scene.add(dl);
+const nolo = (m) => { m.userData.outlineParameters = { visible: false }; return m; };
+const road = new THREE.Mesh(new THREE.PlaneGeometry(14, 2400), nolo(new THREE.MeshLambertMaterial({ color: P.road })));
+road.rotation.x = -Math.PI / 2; road.position.y = 0.06; scene.add(road);
+const kerb = new THREE.Mesh(new THREE.PlaneGeometry(16.2, 2400), nolo(new THREE.MeshLambertMaterial({ color: P.kerb })));
+kerb.rotation.x = -Math.PI / 2; kerb.position.y = 0.005; scene.add(kerb);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 2400), nolo(new THREE.MeshLambertMaterial({ color: P.ground })));
+ground.rotation.x = -Math.PI / 2; ground.position.y = -0.15; scene.add(ground);
+const kart = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1, 2.2), toon('#ff6b8b'));
+scene.add(kart);
+const active = [];
+const camera = new THREE.PerspectiveCamera(70, 1280 / 720, 0.1, 2000);
+let kartZ;
+if (mode === 'layout') {
+  const z0 = sec.start * 30, z1 = sec.end * 30;
+  for (let zf = z0; zf < z1; zf += th.spacing) {
+    const rng = makeRng(hashSeed(sec.id, Math.round(zf)));
+    for (const p of th.layout(zf, rng, sec)) {
+      const o = th.makeProp(p.kind); if (!o) { console.error('no prop', p.kind); continue; }
+      o.position.set(p.x || 0, p.y || 0, -(zf + (p.dz || 0))); o.rotation.y = p.rotY || 0; o.scale.setScalar(p.scale || 1);
+      scene.add(o); active.push({ obj: o, kind: p.kind, seed: (zf * 13.37) % 1 });
+    }
+  }
+  let k = 0;
+  for (let zf = z0 + 30; zf < z1; zf += th.billboardEvery) {
+    const text = th.billboards[k % th.billboards.length]; const side = k % 2 === 0 ? 1 : -1; k++;
+    const b = billboard(text, th.billboardStyle || {}); b.position.set(side * 13.5, 0, -zf); b.rotation.y = -side * 0.35; scene.add(b);
+  }
+  kartZ = z0 + +(q.get('z') || 40);
+  kart.position.set(0, 0.5, -kartZ);
+  camera.position.set(0, 3.5, -kartZ + 7);
+  camera.lookAt(0, 2.5, -kartZ - 20);
+} else {
+  // showcase: each kind in a row, viewed from the front
+  const kinds = (q.get('kinds') || '').split(',');
+  const xs = +(q.get('dx') || 16);
+  kinds.forEach((kind, i) => {
+    const o = th.makeProp(kind);
+    o.position.set((i - (kinds.length - 1) / 2) * xs, 0, -30);
+    scene.add(o); active.push({ obj: o, kind, seed: 0.3 });
+  });
+  scene.fog.far = 1000; scene.fog.near = 500;
+  camera.position.set(0, +(q.get('cy') || 8), +(q.get('cz') || 10));
+  camera.lookAt(0, +(q.get('ly') || 6), -30);
+}
+for (const m of [road, kerb, ground]) m.position.z = -(kartZ || 0) - 1000;
+const effect = new OutlineEffect(renderer, { defaultThickness: 0.004, defaultColor: [0.08, 0.05, 0.12] });
+for (const a of active) th.animate && th.animate(a.obj, a.kind, T, bp, a);
+sky.position.copy(camera.position);
+effect.render(scene, camera);
+let n = 0;
+function loop() { n++; for (const a of active) th.animate && th.animate(a.obj, a.kind, T, bp, a); effect.render(scene, camera); if (n < 5) requestAnimationFrame(loop); else document.title = 'done'; }
+requestAnimationFrame(loop);
+window.addEventListener('error', (e) => { document.body.innerHTML = '<pre style="color:#fff;font-size:20px">' + e.message + '</pre>'; });
+</script></body></html>

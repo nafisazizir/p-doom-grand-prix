@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>P(DOOM) GRAND PRIX</title>
+  <link rel="stylesheet" href="./vendor/fonts/fonts.css" />
+  <link rel="stylesheet" href="./style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/build/three.module.js",
+      "three/addons/": "./vendor/three/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="game"></canvas>
+    <canvas id="fx"></canvas>
+    <div id="redwash"></div>
+    <div id="goldframe"></div>
+    <div id="flash"></div>
+
+    <!-- race HUD -->
+    <div id="hud" class="hidden">
+      <div id="pdoom-box">
+        <div class="lbl">P(DOOM)</div>
+        <div id="pdoom">0.50</div>
+        <div class="meter"><div id="pdoom-fill"></div><div class="meter-mark" style="left:80%"></div></div>
+        <div id="power" class="hidden"><span id="power-name">RLHF MAGNET</span><div class="pbar"><div id="power-fill"></div></div></div>
+      </div>
+      <div id="score-box">
+        <div class="gpus"><span class="chip">GPU</span> <span id="gpus">0</span></div>
+        <div id="combo">x0</div>
+        <div id="combo-tier"></div>
+      </div>
+      <div id="announce"></div>
+      <div id="card"><div id="card-title"></div><div id="card-sub"></div></div>
+      <div id="caption"></div>
+      <div id="warn" class="hidden">HANDS ON THE WHEEL!</div>
+      <div id="pip" class="hidden">
+        <canvas id="pip-canvas" width="240" height="180"></canvas>
+        <svg id="wheel" viewBox="-50 -50 100 100" width="64" height="64">
+          <circle r="40" fill="none" stroke="#ffd23f" stroke-width="9" />
+          <circle r="9" fill="#ffd23f" />
+          <rect x="-4" y="-40" width="8" height="32" fill="#ffd23f" />
+          <rect x="-40" y="-4" width="31" height="8" fill="#ffd23f" />
+          <rect x="9" y="-4" width="31" height="8" fill="#ffd23f" />
+          <circle cy="-40" r="6" fill="#ff5ca8" />
+        </svg>
+        <div class="pip-label">HUMAN OPERATOR <i>(unsupervised)</i></div>
+      </div>
+      <div id="kbd-hint" class="hidden">← → steer · SPACE boost · W webcam</div>
+    </div>
+    <div id="popups"></div>
+    <div id="splats"></div>
+    <div id="stamp"></div>
+    <div id="banner"></div>
+
+    <!-- screens -->
+    <div id="loading" class="screen">
+      <div class="logo small">P(DOOM) GRAND PRIX</div>
+      <div id="loading-msg">loading weights…</div>
+    </div>
+
+    <div id="title" class="screen hidden">
+      <div class="logo"><span>P(DOOM)</span><br />GRAND PRIX</div>
+      <div class="subtitle">Drive humanity to safety, one GPU at a time.</div>
+      <div class="buttons">
+        <button id="btn-webcam" class="big">🖐️ PLAY (webcam)</button>
+        <button id="btn-keyboard" class="big alt">⌨️ PLAY (keyboard)</button>
+      </div>
+      <div class="howto">Hold an invisible steering wheel · drive through the GPUs · fly through halos · save humanity</div>
+      <div class="credits">Song: “I'm Upping My P(Doom)” by Claude Pop · Inspired by @RhysSullivan's P(doom) Beat Saber map</div>
+    </div>
+
+    <div id="calibrate" class="screen hidden">
+      <div class="cal-title">Hold your invisible steering wheel</div>
+      <div class="cal-wrap">
+        <canvas id="cal-canvas" width="640" height="480"></canvas>
+        <svg id="cal-ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="track" /><circle id="cal-ring-fill" cx="50" cy="50" r="44" class="fill" /></svg>
+      </div>
+      <div id="cal-status">Show both hands to the camera…</div>
+      <div class="buttons">
+        <button id="btn-skip" class="alt">Skip → keyboard</button>
+      </div>
+    </div>
+
+    <div id="countdown" class="screen hidden clear">
+      <div id="count-num">3</div>
+      <div id="count-gag">Loading weights</div>
+    </div>
+
+    <div id="results" class="screen hidden">
+      <div class="res-label">FINAL P(DOOM)</div>
+      <div id="res-pdoom">0.50</div>
+      <div id="res-verdict"></div>
+      <div class="res-row">
+        <div class="model-card">
+          <div class="mc-title">MODEL CARD</div>
+          <table id="res-card"></table>
+        </div>
+      </div>
+      <div class="buttons">
+        <button id="btn-retrain" class="big">↻ RETRAIN (play again)</button>
+        <button id="btn-menu" class="alt">Main menu</button>
+      </div>
+    </div>
+
+    <div id="paused" class="screen hidden clear"><div class="logo small">PAUSED</div><div class="subtitle">press P to resume</div></div>
+    <div id="debug" class="hidden"></div>
+  </div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
