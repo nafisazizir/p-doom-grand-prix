@@ -3,6 +3,26 @@
 import { FilesetResolver, HandLandmarker } from '../vendor/mediapipe/vision_bundle.mjs';
 
 const DEAD = 6, MAX = 40;
+const GRACE_MS = 250; // a hand vanishing for a frame or two keeps your last steering
+const STEER_TAU = 0.07; // seconds: render-rate smoothing towards the latest reading
+
+// One Euro filter (Casiez et al.): heavy smoothing when still, light smoothing when moving fast.
+class OneEuro {
+  constructor(minCutoff = 1.2, beta = 0.015, dCutoff = 1.0) { this.minCutoff = minCutoff; this.beta = beta; this.dCutoff = dCutoff; this.x = null; this.dx = 0; this.t = 0; }
+  static alpha(cutoff, dt) { const tau = 1 / (2 * Math.PI * cutoff); return 1 / (1 + tau / dt); }
+  filter(x, tMs) {
+    if (this.x === null) { this.x = x; this.t = tMs; return x; }
+    const dt = Math.max(1e-3, (tMs - this.t) / 1000);
+    this.t = tMs;
+    const dx = (x - this.x) / dt;
+    this.dx += OneEuro.alpha(this.dCutoff, dt) * (dx - this.dx);
+    const cutoff = this.minCutoff + this.beta * Math.abs(this.dx);
+    this.x += OneEuro.alpha(cutoff, dt) * (x - this.x);
+    return this.x;
+  }
+  reset() { this.x = null; this.dx = 0; }
+}
+const angleFilter = new OneEuro(1.2, 0.015, 1.0);
 
 export const hands = {
   ready: false,
@@ -19,6 +39,10 @@ export const hands = {
   boostGesture: false,
   _upSince: 0,
   detectMs: 0,
+  target: 0, // latest filtered steering reading; steer eases towards it every render frame
+  detectHz: 0,
+  _detN: 0,
+  _detT0: 0,
   _lastVideoTime: -1,
 
   async init() {
@@ -78,6 +102,8 @@ export const hands = {
     const res = this.landmarker.detectForVideo(v, t0);
     this.detectMs = performance.now() - t0;
     const now = performance.now();
+    this._detN++;
+    if (now - this._detT0 > 1000) { this.detectHz = (this._detN * 1000) / (now - this._detT0); this._detN = 0; this._detT0 = now; }
     const lms = (res.landmarks || []).map((hand) => hand.map((p) => ({ x: 1 - p.x, y: p.y }))); // mirror
     // palm centre = mean of 0,5,9,13,17
     const palms = lms.map((h) => {
@@ -92,11 +118,13 @@ export const hands = {
     if (this.pts.length >= 2) {
       const L = this.pts[0], R = this.pts[this.pts.length - 1];
       const ang = Math.atan2(R.y - L.y, R.x - L.x); // image y down: right hand lower → +angle → steer right
-      const deg = (ang * 180) / Math.PI;
+      const deg = angleFilter.filter((ang * 180) / Math.PI, now);
       this.angleDeg = deg;
       const a = Math.abs(deg);
-      this.raw = a < DEAD ? 0 : Math.sign(deg) * Math.min((a - DEAD) / (MAX - DEAD), 1);
-      this.steer += (this.raw - this.steer) * 0.25;
+      // soft dead zone: eases in instead of jumping from 0
+      const u = Math.max(0, Math.min((a - DEAD) / (MAX - DEAD), 1));
+      this.raw = Math.sign(deg) * u * (0.6 + 0.4 * u);
+      this.target = this.raw;
       this.both = true;
       this.lastBoth = now;
       // boost gesture: both palms high in the frame for 200ms
@@ -105,7 +133,7 @@ export const hands = {
       else this._upSince = 0;
       this.boostGesture = !!this._upSince && now - this._upSince > 200;
     } else {
-      this.both = false;
+      // don't flip `both` here: tick() waits out the grace period so a one-frame dropout doesn't flash the warning
       this.boostGesture = false;
       this._upSince = 0;
     }
@@ -114,11 +142,16 @@ export const hands = {
   /** called every render frame: decay steer to 0 over ~300ms when hands are lost */
   tick(dt) {
     if (!this.ready) return;
-    if (performance.now() - this.lastBoth > 120) {
-      this.steer *= Math.exp(-dt / 0.1);
-      if (Math.abs(this.steer) < 0.01) this.steer = 0;
+    const lost = performance.now() - this.lastBoth;
+    if (lost > GRACE_MS) {
+      // hands really gone: ease back to straight
+      this.target = 0;
       this.both = false;
+      angleFilter.reset();
     }
+    // render-rate smoothing so the kart glides at 60 fps even though detection runs at ~30
+    this.steer += (this.target - this.steer) * (1 - Math.exp(-dt / (lost > GRACE_MS ? 0.12 : STEER_TAU)));
+    if (Math.abs(this.steer) < 0.003 && this.target === 0) this.steer = 0;
   },
 
   /** draw mirrored webcam + skeleton + palm dots into a 2D canvas */

@@ -1087,7 +1087,7 @@ function debugInfo() {
   const sec = sections[G.sectionIdx] || {};
   return {
     mode, songTime: G.songTime.toFixed(2), section: `${G.sectionIdx + 1} ${sec.theme || ''} (${sec.part || ''})`,
-    steer: G.steer.toFixed(2), kartX: G.kartX.toFixed(2), hands: hands.ready ? `${hands.both ? 'both' : hands.pts.length} ${hands.angleDeg.toFixed(1)}° det ${hands.detectMs.toFixed(1)}ms` : 'off',
+    steer: G.steer.toFixed(2), kartX: G.kartX.toFixed(2), hands: hands.ready ? `${hands.both ? 'both' : hands.pts.length} ${hands.angleDeg.toFixed(1)}° det ${hands.detectMs.toFixed(1)}ms @${hands.detectHz.toFixed(0)}Hz` : 'off',
     latency: (clock.latency * 1000).toFixed(0) + ' ms', god: G.god, pDoom: G.pDoom.toFixed(3), quality,
     notes: `${G.hits}/${level.notes.length}`, calls: renderer.info.render.calls,
   };
