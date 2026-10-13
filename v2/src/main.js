@@ -10,7 +10,7 @@ import { loadData, buildLevel, sectionAt } from '../../src/beatmap.js';
 import { Track, SPEED, LANE } from './track.js';
 import { Kart } from './kart.js';
 import { Entities, POWER_NAMES, POWER_DESC } from './entities.js';
-import { Particles } from './particles.js';
+import { Particles, Smoke } from './particles.js';
 import { input } from '../../src/input.js';
 import { hands } from '../../src/hands.js';
 import { hud } from './hud.js';
@@ -47,7 +47,7 @@ const params = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
 
 // ---------------- globals ----------------
-let R, renderer, scene, camera, track, kart, particles, ents, rivals;
+let R, renderer, scene, camera, track, kart, particles, ents, rivals, smoke;
 let bm, sections, level;
 let mode = 'LOADING';
 let paused = false;
@@ -100,6 +100,7 @@ async function boot() {
   kart = new Kart(scene);
   rivals = new Rivals(scene, track);
   particles = new Particles(scene);
+  smoke = new Smoke(scene);
   level = v2Level(buildLevel(bm, structuredClone(sections), THEMES));
   ents = new Entities(scene, track, level);
   window.__bootStep = "debug"; debug.init({ getInfo: debugInfo, setSfx: (v) => audio.setSfxVolume(v) });
@@ -215,6 +216,7 @@ function resetWorld(t) {
   track.reset(t * SPEED);
   camState.snap = true;
   particles.clear();
+  smoke?.clear();
   clock.reset(t);
   G.songTime = G.prevTime = t;
   const lastNote = level.notes[level.notes.length - 1];
@@ -543,6 +545,7 @@ function hitHazard(h, t) {
   hud.announce(pool[(G.hazardsHit * 7) % pool.length], 1500);
   hud.popup('+0.03 P(DOOM)', sx, sy, 'red');
   particles.burst(track.worldPos(h.t * SPEED, h.x, 1, tmpV), ['#ff3b5c', '#ffd23f', '#2b1840'], 20, { speed: 9 });
+  smoke.puff(track.worldPos(h.t * SPEED, h.x, 1, tmpV), '#4a4050', 18, { speed: 5, size: 2.2, alpha: 0.6 });
   def.hit(G);
   assist('crash');
 }
@@ -833,6 +836,26 @@ function frame(now) {
     }
   }
   particles.update(dt);
+  // dust + landing puffs
+  if (mode === 'RACE' && !paused) {
+    const feats = track.course.featuresAt(kartZ);
+    const air = !!feats.jump || G.launched;
+    if (!air && Math.abs(G.kartVel) > 1.3 && Math.random() < 0.8) {
+      for (const sx of [-1.1, 1.1]) {
+        const wp = track.worldPos(kartZ - 1.2, G.kartX + sx / LANE, 0.3, tmpV);
+        smoke.spawn(wp, { x: (Math.random() - 0.5) * 2, y: 0.8 + Math.random(), z: (Math.random() - 0.5) * 2 }, '#e6ddd2', { life: 0.8, size: 0.7, grow: 2.6, alpha: 0.22 });
+      }
+    }
+    if (G.wasAir && !air) {
+      const wp = track.worldPos(kartZ, G.kartX, 0.4, tmpV);
+      smoke.puff(wp, '#f0e6d8', 26, { speed: 9, size: 2.4, grow: 5, alpha: 0.55 });
+      camState.shake = Math.max(camState.shake, 0.6);
+      sfx.play('whoosh');
+      hud.announce('NAILED THE LANDING', 1100);
+    }
+    G.wasAir = air;
+  }
+  smoke.update(dt);
 
   // camera
   updateCamera(dt, kartZ, t, boostK, now);
