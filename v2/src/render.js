@@ -17,12 +17,22 @@ const QUALITY = {
   low: { ratio: 1, shadow: 1024, ao: false, bloom: false },
 };
 
+const QP = new URLSearchParams(location.search);
+export const GRADE = {
+  tm: QP.get('tm') || 'aces',
+  exp: +(QP.get('exp') || 0.86),
+  bloomThr: +((QP.get('bloom') || '').split(',')[0] || 1.7),
+  bloomStr: +((QP.get('bloom') || '').split(',')[1] || 0.3),
+  envK: +(QP.get('envk') || 0.75),
+  fogK: +(QP.get('fogk') || 0.6),
+};
+
 export class Renderer {
   constructor(canvas, quality = 'high') {
     this.canvas = canvas;
     const r = (this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false }));
     r.outputColorSpace = THREE.SRGBColorSpace;
-    r.toneMapping = THREE.NeutralToneMapping;
+    r.toneMapping = { neutral: THREE.NeutralToneMapping, aces: THREE.ACESFilmicToneMapping, agx: THREE.AgXToneMapping }[GRADE.tm] || THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 1;
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
@@ -94,7 +104,7 @@ export class Renderer {
       });
     };
     this.composer.addPass(this.gtao);
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(4, 4), 0.38, 0.5, 1.05);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(4, 4), GRADE.bloomStr, 0.45, GRADE.bloomThr);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
   }
@@ -140,8 +150,8 @@ export class Renderer {
     this.look = look;
     const env = this.envs[look.env] || this.fallbackEnv;
     this.scene.environment = env;
-    this.scene.environmentIntensity = look.envIntensity ?? (look.sky === 'indoor' ? 0.7 : look.sky === 'night' || look.sky === 'space' ? 0.55 : 0.9);
-    this.renderer.toneMappingExposure = look.exposure ?? 1;
+    this.scene.environmentIntensity = GRADE.envK * (look.envIntensity ?? (look.sky === 'indoor' ? 0.8 : look.sky === 'night' || look.sky === 'space' ? 0.65 : 1));
+    this.renderer.toneMappingExposure = GRADE.exp * (look.exposure ?? 1);
     const s = look.sun || {};
     const el = THREE.MathUtils.degToRad(s.elev ?? 40), az = THREE.MathUtils.degToRad((s.azim ?? 0)) + yaw0;
     // azimuth 0 = straight ahead of the driver (−z rotated by yaw0), so the sun is in front: gorgeous backlight
@@ -157,7 +167,7 @@ export class Renderer {
     this.sun.intensity = s.intensity ?? 3;
     const fog = look.fog || {};
     this.scene.fog.color.set(fog.color || '#ffffff');
-    this.scene.fog.density = fog.density ?? 0.002;
+    this.scene.fog.density = (fog.density ?? 0.002) * GRADE.fogK;
     this.hemi.color.set(fog.color || '#ffffff');
     this.hemi.groundColor.set(look.ground?.tint || '#555555');
 

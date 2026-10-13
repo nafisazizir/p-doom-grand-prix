@@ -188,3 +188,5 @@ body.paused #btn-pause { display: none; }
 body.clean #hud, body.clean #popups, body.clean #splats, body.clean #paused, body.clean #btn-pause, body.clean #debug, body.clean #stamp, body.clean #banner, body.clean #fx { display: none !important; }
 body.photo #game { cursor: grab; }
 body.photo #game:active { cursor: grabbing; }
+/* darker glass HUD panels (white frosted glass read as wash-out) */
+#pdoom-box, #score-box { background: linear-gradient(160deg, rgba(30,16,52,0.55), rgba(20,10,35,0.35)) !important; border-color: rgba(255,255,255,0.18) !important; box-shadow: 0 8px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.15) !important; }
