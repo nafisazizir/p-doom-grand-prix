@@ -196,3 +196,10 @@ body.photo #game:active { cursor: grabbing; }
 #pdoom { filter: drop-shadow(2px 0 0 #2b1840) drop-shadow(-2px 0 0 #2b1840) drop-shadow(0 2px 0 #2b1840) drop-shadow(0 -2px 0 #2b1840) drop-shadow(0 5px 0 #2b1840) !important; }
 #combo { filter: drop-shadow(2px 0 0 #2b1840) drop-shadow(-2px 0 0 #2b1840) drop-shadow(0 2px 0 #2b1840) drop-shadow(0 -2px 0 #2b1840) drop-shadow(0 4px 0 #2b1840) !important; }
 #place { filter: drop-shadow(3px 0 0 #2b1840) drop-shadow(-3px 0 0 #2b1840) drop-shadow(0 3px 0 #2b1840) drop-shadow(0 -3px 0 #2b1840) drop-shadow(0 6px 0 #2b1840); text-shadow: none !important; }
+/* keep the bottom of the screen for the lyrics */
+#assistant { left: 22px !important; right: auto; top: 200px; bottom: auto !important; max-width: 320px !important; align-items: flex-start; transform: translateX(-20px) scale(0.96); }
+#assistant.show { transform: none; }
+#assistant .bubble { border-radius: 4px 16px 16px 16px; }
+#place { bottom: auto !important; top: 196px; right: 30px; font-size: 76px !important; }
+#kbd-hint { transition: opacity 1s; }
+#kbd-hint.faded { opacity: 0; }

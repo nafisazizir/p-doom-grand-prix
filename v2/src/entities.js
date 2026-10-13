@@ -224,9 +224,10 @@ export class Entities {
           // pop: squash up and vanish
           const k = it.stateT / 0.25;
           if (k >= 1) { this._release(it); it.done = true; continue; }
-          o.position.y += k * 2.5;
+          o.position.y += k * 4.5;
           o.userData.disc.visible = false;
-          o.scale.set(1.3 * (1 + k * 0.8), 1.3 * (1 - k * 0.6 + 0.6 * Math.sin(k * 3)), 1.3 * (1 + k * 0.8));
+          const sq = 1.3 * (1 - k * 0.85);
+          o.scale.set(sq * (1 + 0.3 * Math.sin(k * 9)), sq, sq);
         } else if (it.state === 'missed') {
           // sad deflate
           const k = Math.min(1, it.stateT / 0.5);

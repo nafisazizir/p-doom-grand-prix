@@ -265,6 +265,10 @@ function startRace({ webcam = false, from = 0, countdown = true } = {}) {
 function beginRace(from) {
   mode = 'RACE';
   setRacingUI(true);
+  const hint = $('kbd-hint');
+  hint.classList.remove('faded');
+  clearTimeout(beginRace._h);
+  beginRace._h = setTimeout(() => hint.classList.add('faded'), 8000);
   showScreen(null);
   audio.play(from);
   clock.reset(from);

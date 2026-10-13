@@ -153,3 +153,6 @@ body.paused #btn-pause { display: none; }
 body.clean #hud, body.clean #popups, body.clean #splats, body.clean #paused, body.clean #btn-pause, body.clean #debug, body.clean #stamp, body.clean #banner, body.clean #fx { display: none !important; }
 body.photo #game { cursor: grab; }
 body.photo #game:active { cursor: grabbing; }
+
+#kbd-hint { transition: opacity 1s; }
+#kbd-hint.faded { opacity: 0; }

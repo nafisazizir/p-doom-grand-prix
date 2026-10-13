@@ -24,7 +24,7 @@ const RIVALS = [
 function bubbleSprite(text, color) {
   const tex = textTexture(text, { w: 512, h: 128, bg: '#ffffff', fg: '#2b1840', border: color, borderW: 10, radius: 40, pad: 22 });
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-  s.scale.set(6, 1.5, 1);
+  s.scale.set(4.6, 1.15, 1);
   return s;
 }
 
@@ -88,8 +88,8 @@ function buildRival(def) {
   }
   // nameplate
   const plate = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTexture(def.name, { w: 512, h: 128, bg: def.color, fg: '#ffffff', border: '#2b1840', borderW: 10, radius: 50, stroke: '#2b1840', strokeW: 8 }), depthWrite: false, transparent: true }));
-  plate.scale.set(3.6, 0.9, 1);
-  plate.position.set(0, 4.2, 0);
+  plate.scale.set(2.6, 0.65, 1);
+  plate.position.set(0, 3.7, 0);
   g.add(plate);
   g.traverse((o) => { if (o.isMesh && !o.material.transparent && !o.material.isMeshBasicMaterial) o.castShadow = true; });
   g.userData.body = body;
