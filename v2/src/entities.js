@@ -208,7 +208,9 @@ export class Entities {
       // collected things ride along with the kart so the camera never drives into them
       if (it.state === 'got') it.dz = (songTime - it.t) * SPEED;
       const x = it.flyX ?? it.x;
-      this.track.worldPos(zf + (it.dz || 0), x, it.baseY, o.position);
+      // hazards sit on the road even under a hop (you jump OVER them); pickups float at hop height
+      if (it.kind === 'hazard') this.track.course.pos(zf + (it.dz || 0), x, it.baseY, o.position);
+      else this.track.worldPos(zf + (it.dz || 0), x, it.baseY, o.position);
       o.scale.setScalar(1);
       o.rotation.set(0, -this.track.course.frame(zf + (it.dz || 0), _fy).yaw, 0);
       if (it.kind === 'gpu') {

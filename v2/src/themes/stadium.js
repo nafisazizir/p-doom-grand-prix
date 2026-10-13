@@ -558,7 +558,7 @@ function ilyaDoor() {
     kt.add(G.rbox(0.5, 6.2, 0.7, 0.12), frameM, -1.85, 3.1, 0);
     kt.add(G.rbox(0.5, 6.2, 0.7, 0.12), frameM, 1.85, 3.1, 0);
     kt.add(G.rbox(4.2, 0.5, 0.7, 0.12), frameM, 0, 6.2, 0);
-    kt.add(G.box(3.2, 5.95, 0.05), glow('#fff8d8', { intensity: 4 }), 0, 2.98, -0.1);
+    kt.add(G.box(3.2, 5.95, 0.05), glow('#fff8d8', { intensity: 1.9 }), 0, 2.98, -0.1);
     kt.add(G.box(4.6, 0.25, 2), toon('#2a2c48'), 0, 0.12, 0.6);
   }));
   const hinge = new THREE.Group();
@@ -576,13 +576,13 @@ function ilyaDoor() {
   const rays = new THREE.Group();
   rays.position.set(0.3, 0, 0.2);
   g.add(rays);
-  const floor = mesh(G.plane(4.4, 8), additive('#fff3b0', 0.32), 0.4, 0.05, 4.2);
+  const floor = mesh(G.plane(4.4, 8), additive('#fff3b0', 0.2), 0.4, 0.05, 4.2);
   floor.rotation.x = -Math.PI / 2;
   rays.add(floor);
-  const shaft = mesh(G.cyl(2.6, 1.5, 8, 4, 1, true), additive('#fff6c8', 0.12), 0.4, 3.0, 4.2);
+  const shaft = mesh(G.cyl(2.6, 1.5, 8, 4, 1, true), additive('#fff6c8', 0.07), 0.4, 3.0, 4.2);
   shaft.rotation.set(Math.PI / 2, Math.PI / 4, 0);
   rays.add(shaft);
-  const glare = glareSprite('#fff3c0', 1.1, 9);
+  const glare = glareSprite('#fff3c0', 0.5, 5);
   glare.position.set(0.2, 3.1, 0.4);
   g.add(glare);
   const sign = textPanel('WHAT DID ILYA SEE?', { width: 7.6, height: 1.4, bg: INK, fg: '#fff3b0', border: '#fff3b0', borderW: 8, radius: 16 });
@@ -918,7 +918,7 @@ export default {
       case 'door':
         ud.hinge.rotation.y = -0.95 + Math.sin(t * 0.9 + sd * 6) * 0.12;
         ud.rays.scale.set(1, 1 + 0.15 * k, 1 + 0.08 * k);
-        ud.glare.scale.set(9 * (1 + 0.25 * k), 9 * (1 + 0.25 * k), 1);
+        ud.glare.scale.set(5 * (1 + 0.2 * k), 5 * (1 + 0.2 * k), 1);
         break;
       case 'loom':
         ud.shuttle.position.x = Math.sin(t * Math.PI * 1.1 + sd * 6) * 7.4;

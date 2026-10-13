@@ -776,12 +776,13 @@ function gpuSat() {
   card.rotation.z = -0.12;
   bob.add(card);
   card.add(kit('gpu', (kt) => {
-    const shroud = MAT.metal('#c9ccd6', { roughness: 0.25 }), black = toon('#141418', { roughness: 0.45 }), gold = MAT.metal('#ffcf5a', { roughness: 0.25 });
+    // satin (not mirror) metal: a 13 m mirror reflecting the HDRI sun bloomed out a third of the screen
+    const shroud = MAT.metal('#aeb2be', { roughness: 0.55, metalness: 0.75, envMapIntensity: 0.4 }), black = toon('#141418', { roughness: 0.45 }), gold = MAT.metal('#ffcf5a', { roughness: 0.4, envMapIntensity: 0.6 });
     kt.add(G.rbox(13, 5.2, 1.4, 0.4), shroud, 0, 0, 0);
     kt.add(G.rbox(12.6, 4.8, 0.3, 0.2), black, 0, 0, -0.75);
-    kt.add(G.box(13.2, 0.25, 0.3), glow(LIME, { intensity: 2.6 }), 0, 2.45, 0.6);
+    kt.add(G.box(13.2, 0.25, 0.3), glow(LIME, { intensity: 1.8 }), 0, 2.45, 0.6);
     for (let i = 0; i < 8; i++) kt.add(G.box(0.5, 0.5, 0.2), gold, -4 + i * 0.7, -2.75, -0.7);
-    kt.add(G.box(0.4, 5.4, 1.6), MAT.chrome('#e4e6ee'), -6.7, 0, 0);
+    kt.add(G.box(0.4, 5.4, 1.6), MAT.metal('#c8cad2', { roughness: 0.45, envMapIntensity: 0.4 }), -6.7, 0, 0);
     for (const s of [-1, 1]) {
       kt.add(G.torus(1.9, 0.18, 32), black, s * 3.2, 0, 0.75);
       kt.add(G.cyl(0.55, 0.55, 0.2, 16), black, s * 3.2, 0, 0.72, Math.PI / 2);
@@ -798,7 +799,7 @@ function gpuSat() {
     card.add(f);
     fans.push(f);
   }
-  const flames = kit('gpuFlame', (kt) => { for (const s of [-1, 1]) kt.add(G.cone(0.6, 3.2, 12), glow('#7af7ff', { intensity: 3 }), 9.1, s * 1.6, 0, 0, 0, Math.PI / 2); });
+  const flames = kit('gpuFlame', (kt) => { for (const s of [-1, 1]) kt.add(G.cone(0.6, 3.2, 12), glow('#7af7ff', { intensity: 1.8 }), 9.1, s * 1.6, 0, 0, 0, Math.PI / 2); });
   card.add(flames);
   const sign = textPanel(['GPUs IN SPACE', 'cooling: solved ✓'], { width: 8.6, height: 3.2, bg: '#101418', fg: LIME, border: LIME, borderW: 10, radius: 16 });
   sign.position.set(0, 4.6, 0.3);

@@ -99,7 +99,10 @@ export class Smoke {
       uniforms: { scale: { value: innerHeight / 2 } },
       vertexShader: `attribute float size; attribute float alpha; attribute vec3 color; varying float vA; varying vec3 vC;
         uniform float scale;
-        void main(){ vA = alpha; vC = color; vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = size * scale / -mv.z; gl_Position = projectionMatrix * mv; }`,
+        void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0);
+          // fade out puffs right in front of the lens so they never fill the screen
+          vA = alpha * smoothstep(2.5, 7.0, -mv.z); vC = color;
+          gl_PointSize = size * scale / -mv.z; gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `varying float vA; varying vec3 vC;
         void main(){ vec2 d = gl_PointCoord - 0.5; float r = length(d); if (r > 0.5) discard;
           float a = smoothstep(0.5, 0.0, r); a *= a; gl_FragColor = vec4(vC, a * vA); }`,

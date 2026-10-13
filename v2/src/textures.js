@@ -6,6 +6,7 @@ let manifest = null;
 const loader = new THREE.TextureLoader();
 const texCache = new Map();
 const matCache = new Map();
+const pending = new WeakMap(); // loading texture → clones waiting for its image
 
 export async function loadManifest() {
   try {
@@ -21,7 +22,9 @@ function tex(path, srgb) {
   const key = path + (srgb ? '|s' : '');
   let t = texCache.get(key);
   if (t) return t;
-  t = loader.load(new URL(path, BASE).href);
+  const pend = [];
+  t = loader.load(new URL(path, BASE).href, () => { for (const c of pend) c.needsUpdate = true; pend.length = 0; });
+  pending.set(t, pend);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.anisotropy = 8;
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
@@ -42,7 +45,7 @@ export function surface(slot, { tint = '#ffffff', scale = 4, roughness = null, m
   m = new THREE.MeshStandardMaterial({ color: tint, roughness: roughness ?? 0.85, metalness: metalness ?? 0, envMapIntensity });
   if (set) {
     const rep = 1 / scale;
-    const setRep = (t) => { t = t.clone(); t.repeat.set(rep, rep); return t; };
+    const setRep = (t) => { t = cloneTex(t); t.repeat.set(rep, rep); return t; };
     if (set.color) m.map = setRep(tex(set.color, true));
     if (set.normal) { m.normalMap = setRep(tex(set.normal, false)); m.normalScale.set(normalScale, normalScale); }
     if (set.rough && roughness === null) { m.roughnessMap = setRep(tex(set.rough, false)); m.roughness = 1; }
@@ -79,6 +82,14 @@ function rainbowMaterial() {
     roughness: 0.15, metalness: 0.2, transparent: true, opacity: 0.92,
   });
   return m;
+}
+
+/** clone a (possibly still loading) texture without flagging it for upload before its image exists
+ *  (Texture.copy sets needsUpdate → "Texture marked for update but no image data found" spam) */
+export function cloneTex(t) {
+  const c = t.clone();
+  if (!t.image && pending.has(t)) { c.version = 0; pending.get(t).push(c); }
+  return c;
 }
 
 export const WATER = () => manifest?.water;

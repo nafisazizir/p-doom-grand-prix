@@ -34,6 +34,33 @@ export class Kart {
     this.yaw = 0; this.lean = 0; this.spin = 0; this.scaleK = 1; this.flameK = 0; this.gliderK = 0;
     this._build();
     this.root.traverse((o) => { if (o.isMesh && !o.material.transparent && !o.material.isMeshBasicMaterial) { o.castShadow = true; o.receiveShadow = true; } });
+    this._rimLight();
+  }
+
+  /** the hero must always read, even backlit by a low sun: private copies of the kart's lit materials get a
+   *  warm view-facing rim + a little fill (shader emissive), and a touch more env reflection */
+  _rimLight() {
+    const copies = new Map();
+    const rimU = { rimColor: { value: new THREE.Color('#ffe2c4') } };
+    this.root.traverse((o) => {
+      if (!o.isMesh) return;
+      const m = o.material;
+      if (!m || Array.isArray(m) || !m.isMeshStandardMaterial || m.transparent) return;
+      let c = copies.get(m);
+      if (!c) {
+        c = m.clone();
+        c.envMapIntensity = (m.envMapIntensity ?? 1) * 1.35;
+        c.onBeforeCompile = (sh) => {
+          sh.uniforms.rimColor = rimU.rimColor;
+          sh.fragmentShader = 'uniform vec3 rimColor;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+            float rimF = 1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);
+            totalEmissiveRadiance += rimColor * pow(rimF, 2.6) * 0.32 + diffuseColor.rgb * 0.07;`);
+        };
+        c.customProgramCacheKey = () => 'kartRim';
+        copies.set(m, c);
+      }
+      o.material = c;
+    });
   }
 
   _build() {

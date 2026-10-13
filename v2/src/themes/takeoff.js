@@ -809,8 +809,9 @@ export default {
   },
   look: {
     sky: 'dusk', env: 'dusk', exposure: 0.8, hills: 1.5,
-    sun: { elev: 7, azim: 42, color: '#ff8a50', intensity: 3.4 },
-    skyParams: { turbidity: 4.5, rayleigh: 3.0, mie: 0.005, clouds: 0.45 },
+    // sun swung further right (was 42°) so its disc + mie halo no longer glares at the right edge of the frame
+    sun: { elev: 7, azim: 64, color: '#ff8a50', intensity: 3.4 },
+    skyParams: { turbidity: 4.5, rayleigh: 3.0, mie: 0.0035, clouds: 0.45 },
     fog: { color: '#7a4050', density: 0.0012 },
     ground: { tex: 'dirt', tint: '#6a4a46', scale: 7 }, road: { tex: 'metalplate', tint: '#8a8a98' },
   },
@@ -826,7 +827,7 @@ export default {
       if (at(320)) out.push({ kind: 'launchFar', x: 170 });
       if (at(120)) out.push({ kind: 'launchFar', x: -210 });
       if (at(30)) out.push({ kind: 'gantryR', x: 27, rotY: -0.5 });
-      if (at(150)) out.push({ kind: 'gantryB', x: -30, rotY: 0.5 });
+      if (at(150)) out.push({ kind: 'gantryB', x: -44, rotY: 0.5 }); // its pad + smoke face the road: at -30 the smoke engulfed the chase camera
       if (at(260)) out.push({ kind: 'gantryR', x: 29, rotY: -0.5 });
       if (at(70) || at(290)) out.push({ kind: 'scoreboard', x: 0, y: 0 });
       if (at(100)) out.push({ kind: 'foom', x: -21, rotY: 0.55 });

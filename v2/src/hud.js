@@ -25,6 +25,9 @@ export const hud = {
       this.el[id] = $(id);
     }
     this.fx = this.el.fx.getContext('2d');
+    // one-shot animations drop their class when done, so un-hiding the HUD (H) doesn't replay them
+    const once = { card: ['show'], announce: ['show'], banner: ['show'], stamp: ['show'], pdoom: ['pulse-up', 'pulse-down'], combo: ['bump'] };
+    for (const [id, cls] of Object.entries(once)) this.el[id]?.addEventListener('animationend', (e) => { if (e.target === this.el[id]) this.el[id].classList.remove(...cls); });
     for (let i = 0; i < 70; i++) this.lines.push(this._newLine(true));
     window.addEventListener('resize', () => this._resize());
     this._resize();
@@ -110,7 +113,24 @@ export const hud = {
     d.style.left = x + 'px';
     d.style.top = y + 'px';
     this.el.popups.appendChild(d);
-    setTimeout(() => d.remove(), 850);
+    d._t = setTimeout(() => d.remove(), 850);
+    return d;
+  },
+  /** counting popup ("+N GPU"): pickups in quick succession bump one popup instead of stacking unreadable text */
+  popupCount(n, unit, x, y, cls = '') {
+    const now = performance.now(), L = this._lastCount;
+    if (L && L.unit === unit && L.cls === cls && now - L.t < 300 && L.el.isConnected) {
+      L.n += n;
+      L.t = now;
+      L.el.textContent = `+${L.n} ${unit}`;
+      L.el.style.left = x + 'px';
+      L.el.style.top = y + 'px';
+      L.el.style.animation = 'none'; void L.el.offsetWidth; L.el.style.animation = '';
+      clearTimeout(L.el._t);
+      L.el._t = setTimeout(() => L.el.remove(), 850);
+      return;
+    }
+    this._lastCount = { n, unit, cls, t: now, el: this.popup(`+${n} ${unit}`, x, y, cls) };
   },
 
   /** "You're absolutely right!" window splatted on the windscreen; they stack up */

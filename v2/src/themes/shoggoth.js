@@ -101,6 +101,7 @@ function shroom(col, size) {
   for (const c of g.userData.caps) bake(c, 'cap' + col + size + c.position.y.toFixed(2));
   return g;
 }
+let signFront = null;
 function shroomCluster(seed) {
   const g = new THREE.Group();
   const rng = makeRng(seed * 31 + 5);
@@ -121,7 +122,13 @@ function shroomCluster(seed) {
     moss.scale.set(0.35 + rng() * 0.3, 0.18, 0.35 + rng() * 0.3);
     g.add(moss);
   }
+  // two single-sided faces back to back: clusters spawn at random headings, and a DoubleSide panel reads mirrored from behind
   const sign = textPanel(['DO NOT', 'EAT ⚠'], { width: 1.6, height: 1, bg: '#fff04a', fg: '#2b1840', border: '#2b1840', borderW: 10, radius: 14 });
+  if (!signFront) { signFront = sign.material.clone(); signFront.side = THREE.FrontSide; }
+  sign.material = signFront;
+  const signBack = new THREE.Mesh(sign.geometry, signFront);
+  signBack.rotation.y = Math.PI;
+  sign.add(signBack);
   sign.position.set(0.4, 0.55, 2.4);
   sign.rotation.x = -0.25;
   g.add(sign);

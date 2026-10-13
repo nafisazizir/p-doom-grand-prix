@@ -5,7 +5,7 @@ import { toon, glow, G, mesh, billboard, textPanel, makeRng, hashSeed, clamp, sm
 import { getTheme } from './themes/index.js';
 import { Course, SPEED, ROAD_HALF, LANE } from './course.js';
 import { lookFor } from './looks.js';
-import { surface, WATER, textureAt } from './textures.js';
+import { surface, WATER, textureAt, cloneTex } from './textures.js';
 
 export { SPEED, ROAD_HALF, LANE };
 export const FAR = 330;
@@ -192,7 +192,7 @@ export class Track {
   _buildStatic() {
     const C = this.course;
     const sections = this.sections;
-    const jumpSkip = (s) => { const f = C.featuresAt(s); return !!f.jump; };
+    const jumpSkip = (s) => { const f = C.featuresAt(s); return !!f.jump?.glide; }; // hops keep their road (the kart hops over the leak)
     for (let i = 0; i < sections.length; i++) {
       const sec = sections[i];
       const th = getTheme(sec.theme);
@@ -288,7 +288,61 @@ export class Track {
       if (f.water) this._water(f, sA, sB);
       if (f.type === 'grid') this._startGrid();
       if (f.type === 'cliff') this._cliff(f, sA, sB);
+      if (f.type === 'jump' && f.glide) this._landing(f);
     }
+  }
+
+  /** AGI WINGS landing zone at the end of the glide: glowing chevron runway, edge lights, a beacon and a sign */
+  _landing(f) {
+    const C = this.course, s1 = f.s[1];
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 128;
+    const g = c.getContext('2d');
+    g.strokeStyle = '#ffffff'; g.lineWidth = 18; g.lineCap = 'round'; g.lineJoin = 'round';
+    g.beginPath(); g.moveTo(14, 104); g.lineTo(64, 40); g.lineTo(114, 104); g.stroke(); // ^ = forward
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(1 / (2 * (H - 1.5)), 1 / 7);
+    tex.offset.set(0.5, 0);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color('#ffb347').multiplyScalar(1.9), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+    this._sweep(s1, s1 + 70, 2, () => [[-(H - 1.5), 0.05], [H - 1.5, 0.05]], mat, { name: 'landingStrip', shadow: false });
+    this.landingTex = tex;
+    // runway edge lights
+    const pts = [];
+    for (let s = s1 + 1; s < s1 + 72; s += 5) pts.push(s);
+    const lights = new THREE.InstancedMesh(G.sphere(0.32, 10), glow('#ffd27a', { intensity: 4 }), pts.length * 2);
+    const m4 = new THREE.Matrix4(), p = new THREE.Vector3();
+    let k = 0;
+    for (const s of pts) for (const side of [-1, 1]) { C.pos(s, side * (H + 0.6) / LANE, 0.35, p); m4.makeTranslation(p.x, p.y, p.z); lights.setMatrixAt(k++, m4); }
+    lights.count = k;
+    this.static.add(lights);
+    // beacon: a tall soft beam of light you can aim for from space
+    const bc = document.createElement('canvas');
+    bc.width = 4; bc.height = 128;
+    const bg = bc.getContext('2d');
+    const gr = bg.createLinearGradient(0, 0, 0, 128);
+    gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.7, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,1)');
+    bg.fillStyle = gr; bg.fillRect(0, 0, 4, 128);
+    const btex = new THREE.CanvasTexture(bc);
+    const beamMat = new THREE.MeshBasicMaterial({ map: btex, color: '#ffbf6a', transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 4.2, 150, 24, 1, true), beamMat);
+    const fr = C.frame(s1 + 26, {});
+    beam.position.set(fr.x, fr.y + 75, fr.z);
+    beam.userData.noAO = true;
+    this.static.add(beam);
+    this.landingBeam = beam;
+    this.landingZ = s1;
+    // the sign, tilted up towards a kart coming down from above
+    const sign = new THREE.Group();
+    const panel = textPanel(['▼ LANDING ZONE ▼', 'AGI WINGS: PLEASE STOW'], { width: 17, height: 3.6, bg: '#ffd23f', fg: '#2b1840', border: '#2b1840', borderW: 12, radius: 22 });
+    panel.rotation.x = -0.55;
+    sign.add(panel);
+    const fs = C.frame(s1 + 6, {});
+    sign.position.set(fs.x, fs.y + 15, fs.z);
+    sign.rotation.y = -fs.yaw;
+    this.static.add(sign);
+    this.landingSign = sign;
   }
 
   _bridge(f, sA, sB) {
@@ -409,14 +463,13 @@ export class Track {
     const w = radius * 2, d = radius * 2;
     const y = f.type === 'cliff' ? miny - 48 : this._groundBase(sA, f) + 1;
     const nm = WATER() ? textureAt(WATER(), false) : null;
-    if (nm) { nm.wrapS = nm.wrapT = THREE.RepeatWrapping; }
     const sea = f.water === 'sea';
     const mat = new THREE.MeshStandardMaterial({
       color: sea ? '#1f7fa8' : '#6a2a9a', roughness: 0.06, metalness: 0.1, transparent: true, opacity: sea ? 0.92 : 0.88,
       emissive: sea ? '#03202c' : '#4a0a7a', emissiveIntensity: sea ? 0.4 : 1.2,
-      normalMap: nm ? nm.clone() : null, normalScale: new THREE.Vector2(0.6, 0.6),
+      normalMap: nm ? cloneTex(nm) : null, normalScale: new THREE.Vector2(0.6, 0.6),
     });
-    if (mat.normalMap) { mat.normalMap.needsUpdate = true; mat.normalMap.repeat.set(w / 40, d / 40); }
+    if (mat.normalMap) mat.normalMap.repeat.set(w / 40, d / 40);
     const plane = new THREE.Mesh(new THREE.CircleGeometry(radius, 64), mat);
     plane.rotation.x = -Math.PI / 2;
     plane.position.set((minx + maxx) / 2, y, (minz + maxz) / 2);
@@ -459,21 +512,31 @@ export class Track {
   update(kartZ, camPos, t, beatPhase, redness, dt) {
     this.time = t;
     // section look (lighting/sky)
-    const si = this.sectionIndexAtZ(kartZ + 6);
+    const feats = this.course.featuresAt(kartZ);
+    // gliding down from space: take on the look of where we'll land (crossfaded over the first part of the glide)
+    const glide = feats.jump?.glide ? feats.jump : null;
+    const si = glide ? this.sectionIndexAtZ(glide.s[1] + 1) : this.sectionIndexAtZ(kartZ + 6);
     const th = getTheme(this.sections[si].theme);
     let look = lookFor(th);
-    const feats = this.course.featuresAt(kartZ);
     if (feats.space && look.sky !== 'space' && th.spaceLook) look = { ...look, ...th.spaceLook, sky: 'space' };
     else if (feats.space && look.sky !== 'space') look = { ...look, sky: 'space', env: 'night', nightColors: { top: '#05010f', horizon: '#2a0a3a', nebula: '#ff4fd8' }, fog: { color: '#1a0830', density: 0.0008 }, sun: { ...look.sun, elev: 30, intensity: 2 } };
     const key = si + (feats.space ? 's' : '');
     if (key !== this.lookKey) {
       this.lookKey = key;
-      this.R.applyLook(look, this.course.frame(kartZ, _fr).yaw);
+      this.R.applyLook(look, this.course.frame(kartZ, _fr).yaw, glide ? 1.8 : 0);
       this.look = look;
     }
     // redness for doom
-    this.R.scene.fog.color.set(look.fog?.color || '#ffffff').lerp(_red, redness * 0.35);
+    this.R.scene.fog.color.copy(this.R.fogBase).lerp(_red, redness * 0.35);
 
+    // landing zone: chevrons crawl towards the touchdown, the beacon fades once we're down
+    if (this.landingTex) {
+      this.landingTex.offset.y = -(t * 1.6) % 1;
+      const d = kartZ - this.landingZ;
+      this.landingBeam.material.opacity = 0.55 * clamp(-d / 60, 0, 1);
+      this.landingBeam.visible = d < 0;
+      this.landingSign.visible = d < 12;
+    }
     // water ripples
     for (const w of this.waters) if (w.material.normalMap) { w.material.normalMap.offset.x = t * 0.01; w.material.normalMap.offset.y = t * 0.013; }
 
@@ -638,16 +701,18 @@ export class Track {
       g.add(post);
       g.add(mesh(G.cyl(1.3, 1.5, 0.6, 20), MAT.metal('#9aa0ac'), sx * w / 2, 0.3, 0));
     }
-    const beam = mesh(G.rbox(w + 3, 3, 1.4, 0.4), MAT.paint(colB), 0, 11.5, 0);
+    const beam = mesh(G.rbox(w + 3, 3.6, 1.4, 0.4), MAT.paint(colB), 0, 11.5, 0);
     beam.castShadow = true;
     g.add(beam);
     const label = `TRACK ${i + 1}: ${th.title || sec.theme.toUpperCase()}`;
-    const panel = textPanel(label, { width: w + 1.8, height: 2.4, bg: colB, fg: '#2b1840', border: null, borderW: 0, radius: 10 });
-    panel.position.set(0, 11.5, 0.72);
+    // wide panel → give the canvas a matching aspect + small padding (the default 512 px canvas left ~no room for text)
+    const pw = w - 1.8; // between the posts (which would otherwise cover the ends of the text)
+    const panel = textPanel(label, { width: pw, height: 3.0, w: 2048, h: Math.round(2048 * 3.0 / pw), pad: 26, bg: colB, fg: '#2b1840', border: '#2b1840', borderW: 8, radius: 18 });
+    panel.position.set(0, 11.5, 0.86);
     g.add(panel);
     const lights = [];
     for (let k = 0; k < 12; k++) {
-      const l = mesh(G.sphere(0.3, 10), glow(k % 2 ? '#ffffff' : colA, { intensity: 4 }), -w / 2 + (k + 0.5) * (w / 12), 13.3, 0.5);
+      const l = mesh(G.sphere(0.3, 10), glow(k % 2 ? '#ffffff' : colA, { intensity: 4 }), -w / 2 + (k + 0.5) * (w / 12), 13.6, 0.5);
       lights.push(l); g.add(l);
     }
     g.userData.lights = lights;

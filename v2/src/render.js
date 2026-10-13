@@ -73,6 +73,7 @@ export class Renderer {
     this.dome = makeNightDome();
     this.scene.add(this.dome);
     this.scene.fog = new THREE.FogExp2(0xffffff, 0.002);
+    this.fogBase = new THREE.Color('#ffffff'); // look's fog colour (crossfaded); the track tints it red with doom
 
     this._buildComposer();
     this.setQuality(quality);
@@ -146,7 +147,36 @@ export class Renderer {
   }
 
   /** apply a look (from looks.js). yaw0 = course heading at this point so the sun azimuth is relative to travel. */
-  applyLook(look, yaw0 = 0) {
+  _lookState() {
+    const u = this.dome.material.uniforms;
+    return {
+      exposure: this.renderer.toneMappingExposure, envI: this.scene.environmentIntensity, sunI: this.sun.intensity,
+      fogD: this.scene.fog.density, sunC: this.sun.color.clone(), fogC: this.fogBase.clone(), hemiC: this.hemi.color.clone(), hemiG: this.hemi.groundColor.clone(),
+      top: u.top.value.clone(), horizon: u.horizon.value.clone(), nebula: u.nebula.value.clone(), nebulaAmt: u.nebulaAmt.value, stars: u.stars.value,
+    };
+  }
+  _setLookState(a, b, k) {
+    const u = this.dome.material.uniforms, L = THREE.MathUtils.lerp;
+    this.renderer.toneMappingExposure = L(a.exposure, b.exposure, k);
+    this.scene.environmentIntensity = L(a.envI, b.envI, k);
+    this.sun.intensity = L(a.sunI, b.sunI, k);
+    this.scene.fog.density = L(a.fogD, b.fogD, k);
+    this.sun.color.lerpColors(a.sunC, b.sunC, k);
+    this.fogBase.lerpColors(a.fogC, b.fogC, k);
+    this.hemi.color.lerpColors(a.hemiC, b.hemiC, k);
+    this.hemi.groundColor.lerpColors(a.hemiG, b.hemiG, k);
+    if (this.fade.domeMode === 'lerp') {
+      u.top.value.lerpColors(a.top, b.top, k); u.horizon.value.lerpColors(a.horizon, b.horizon, k); u.nebula.value.lerpColors(a.nebula, b.nebula, k);
+      u.nebulaAmt.value = L(a.nebulaAmt, b.nebulaAmt, k); u.stars.value = L(a.stars, b.stars, k);
+    }
+  }
+
+  /** apply a look; fade > 0 crossfades sky dome / sky, fog, exposure and lights over `fade` seconds */
+  applyLook(look, yaw0 = 0, fade = 0) {
+    const from = fade > 0 && this.look ? this._lookState() : null;
+    const wasOutdoor = this.sky.visible && !this.dome.visible;
+    this.fade = null;
+    this.dome.material.uniforms.alpha.value = 1;
     this.look = look;
     const env = this.envs[look.env] || this.fallbackEnv;
     this.scene.environment = env;
@@ -167,6 +197,7 @@ export class Renderer {
     this.sun.intensity = s.intensity ?? 3;
     const fog = look.fog || {};
     this.scene.fog.color.set(fog.color || '#ffffff');
+    this.fogBase.set(fog.color || '#ffffff');
     this.scene.fog.density = (fog.density ?? 0.002) * GRADE.fogK;
     this.hemi.color.set(fog.color || '#ffffff');
     this.hemi.groundColor.set(look.ground?.tint || '#555555');
@@ -196,10 +227,45 @@ export class Renderer {
       u.nebulaAmt.value = look.sky === 'space' ? 1 : look.sky === 'night' ? 0.35 : 0;
       u.stars.value = look.sky === 'indoor' ? 0 : 1;
     }
+    if (from) {
+      const to = this._lookState();
+      let domeMode = 'lerp';
+      if (!wasOutdoor && outdoor) {
+        // space/night dome → physical sky: keep the old dome on top and fade it out
+        domeMode = 'out';
+        this.dome.visible = true;
+        const u = this.dome.material.uniforms;
+        u.top.value.copy(from.top); u.horizon.value.copy(from.horizon); u.nebula.value.copy(from.nebula); u.nebulaAmt.value = from.nebulaAmt; u.stars.value = from.stars;
+      } else if (wasOutdoor && !outdoor) {
+        domeMode = 'in';
+        this.sky.visible = true;
+      }
+      this.fade = { from, to, t: 0, dur: fade, domeMode, outdoor };
+      this._tickFade(0);
+    }
+  }
+
+  _tickFade(dt) {
+    const f = this.fade;
+    if (!f) return;
+    f.t += dt;
+    const k = THREE.MathUtils.smoothstep(f.t / f.dur, 0, 1);
+    this._setLookState(f.from, f.to, k);
+    const a = this.dome.material.uniforms.alpha;
+    if (f.domeMode === 'out') a.value = 1 - k;
+    else if (f.domeMode === 'in') a.value = k;
+    if (f.t >= f.dur) {
+      a.value = 1;
+      this.sky.visible = f.outdoor;
+      this.dome.visible = !f.outdoor;
+      this.fade = null;
+    }
   }
 
   /** follow the kart with the sun's shadow frustum and keep skies centred on the camera */
   update(focus, t) {
+    this._tickFade(Math.min(0.1, Math.max(0, t - (this._lastT ?? t))));
+    this._lastT = t;
     this.sun.position.copy(focus).addScaledVector(this.sunDir, 150);
     this.sun.target.position.copy(focus);
     this.sky.position.copy(this.camera.position);
@@ -219,14 +285,15 @@ export class Renderer {
 
 function makeNightDome() {
   const mat = new THREE.ShaderMaterial({
-    side: THREE.BackSide, depthWrite: false, fog: false,
+    side: THREE.BackSide, depthWrite: false, fog: false, transparent: true,
     uniforms: {
+      alpha: { value: 1 },
       top: { value: new THREE.Color('#05010f') }, horizon: { value: new THREE.Color('#20104a') },
       nebula: { value: new THREE.Color('#ff4fd8') }, nebulaAmt: { value: 0 }, stars: { value: 1 }, time: { value: 0 },
     },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }`,
     fragmentShader: `
-      uniform vec3 top; uniform vec3 horizon; uniform vec3 nebula; uniform float nebulaAmt; uniform float stars; uniform float time;
+      uniform vec3 top; uniform vec3 horizon; uniform vec3 nebula; uniform float nebulaAmt; uniform float stars; uniform float time; uniform float alpha;
       varying vec3 vDir;
       float hash(vec3 p){ p = fract(p*0.3183099+.1); p *= 17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
       float noise(vec3 x){ vec3 i=floor(x); vec3 f=fract(x); f=f*f*(3.0-2.0*f);
@@ -247,7 +314,7 @@ function makeNightDome() {
         float st = hash(floor(sp));
         float tw = 0.6 + 0.4*sin(time*3.0 + st*50.0);
         col += stars * vec3(1.0) * step(0.9965, st) * tw * smoothstep(-0.1, 0.3, d.y) * 2.5;
-        gl_FragColor = vec4(col, 1.0);
+        gl_FragColor = vec4(col, alpha);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,

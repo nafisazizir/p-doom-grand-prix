@@ -99,7 +99,7 @@ async function boot() {
   track = new Track(scene, sections, R);
   kart = new Kart(scene);
   rivals = new Rivals(scene, track);
-  globalThis.__dbg = { get camera() { return camera; }, get kart() { return kart; }, get track() { return track; }, CAM };
+  globalThis.__dbg = { get camera() { return camera; }, get kart() { return kart; }, get track() { return track; }, get rivals() { return rivals; }, CAM };
   particles = new Particles(scene);
   smoke = new Smoke(scene);
   level = v2Level(buildLevel(bm, structuredClone(sections), THEMES));
@@ -262,8 +262,11 @@ function startRace({ webcam = false, from = 0, countdown = true } = {}) {
     beginRace(from);
   }
 }
+let raceStartWall = 0;
 function beginRace(from) {
   mode = 'RACE';
+  raceStartWall = performance.now();
+  lowFpsTime = 0;
   setRacingUI(true);
   const hint = $('kbd-hint');
   hint.classList.remove('faded');
@@ -499,7 +502,7 @@ function collect(n, t) {
   G.maxCombo = Math.max(G.maxCombo, G.combo);
   addDoom(TUNE.collect);
   sfx.play('pickup', { step: G.combo - 1 });
-  hud.popup(`+${v} GPU`, sx, sy, v > 1 ? 'gold' : '');
+  hud.popupCount(v, 'GPU', sx, sy, v > 1 ? 'gold' : '');
   particles.burst(track.worldPos(zf, n.flyX ?? n.x, 1.2, tmpV), ['#7cffb0', '#ffd23f', '#ffffff'], 14, { speed: 7, carry: 24 });
   // combo tiers
   for (let i = 0; i < TIERS.length; i++) {
@@ -708,6 +711,7 @@ function resolveItems(t, magnet) {
     const h = hz[G.cursors.hazard++];
     if (h.done) continue;
     const d = Math.abs(G.kartX - h.x) - h.w / 2;
+    if (track.course.hopAt(h.t * SPEED) > 1.5) { h.state = 'jumped'; continue; } // cleared it mid-hop
     if (d < TUNE.kartHalf) hitHazard(h, t);
     else if (d < TUNE.nearMiss) {
       G.nearMisses++;
@@ -890,15 +894,18 @@ function frame(now) {
   if (mode === 'RACE' && !paused) {
     const feats = track.course.featuresAt(kartZ);
     const air = !!feats.jump || G.launched;
-    if (!air && Math.abs(G.kartVel) > 1.3 && Math.random() < 0.8) {
-      for (const sx of [-1.1, 1.1]) {
-        const wp = track.worldPos(kartZ - 1.2, G.kartX + sx / LANE, 0.3, tmpV);
-        smoke.spawn(wp, { x: (Math.random() - 0.5) * 2, y: 0.8 + Math.random(), z: (Math.random() - 0.5) * 2 }, '#e6ddd2', { life: 0.8, size: 0.7, grow: 2.6, alpha: 0.22 });
-      }
+    // tyre dust only when steering hard: small, warm and faint (the outer rear wheel kicks it up)
+    if (!air && Math.abs(G.kartVel) > 2.2 && Math.abs(G.steer) > 0.6 && Math.random() < 0.45) {
+      const sx = G.kartVel > 0 ? -1.3 : 1.3;
+      const wp = track.worldPos(kartZ - 1.4, G.kartX + sx / LANE, 0.25, tmpV);
+      smoke.spawn(wp, { x: (Math.random() - 0.5) * 1.2, y: 0.5 + Math.random() * 0.6, z: (Math.random() - 0.5) * 1.2 }, '#f3dcc0', { life: 0.5, size: 0.45, grow: 1.4, alpha: 0.13 });
     }
     if (G.wasAir && !air) {
-      const wp = track.worldPos(kartZ, G.kartX, 0.4, tmpV);
-      smoke.puff(wp, '#f0e6d8', 26, { speed: 9, size: 2.4, grow: 5, alpha: 0.55 });
+      // compact touchdown puffs at the rear wheels
+      for (const sx of [-1.3, 1.3]) {
+        const wp = track.worldPos(kartZ + 0.5, G.kartX + sx / LANE, 0.3, tmpV);
+        smoke.puff(wp, '#f0e6d8', 7, { speed: 4, size: 1.0, grow: 2.2, alpha: 0.4, life: 0.7, up: 1 });
+      }
       camState.shake = Math.max(camState.shake, 0.6);
       sfx.play('whoosh');
       hud.announce('NAILED THE LANDING', 1100);
@@ -921,7 +928,8 @@ function frame(now) {
   R.render();
 
   // auto quality: step down if we're struggling
-  if (mode === 'RACE' && debug.fps > 0 && debug.fps < 45 && quality !== 'low' && !params.get('quality')) {
+  // (ignore the first seconds after a start / section jump: shader compiles for the new scenery stall a few frames)
+  if (mode === 'RACE' && now - raceStartWall > 4000 && debug.fps > 0 && debug.fps < 45 && quality !== 'low' && !params.get('quality')) {
     lowFpsTime += rawDt;
     if (lowFpsTime > 3) { quality = QUALITIES[Math.max(0, QUALITIES.indexOf(quality) - 1)]; R.setQuality(quality); lowFpsTime = 0; console.warn('low fps: quality →', quality); }
   } else lowFpsTime = 0;
@@ -983,6 +991,7 @@ function startPhoto() {
 const camTarget = new THREE.Vector3();
 const camPosT = new THREE.Vector3();
 const camUp = new THREE.Vector3();
+const camLand = new THREE.Vector3();
 function updateCamera(dt, kartZ, t, boostK, now) {
   if (mode === 'TITLE' || mode === 'LOADING') {
     const a = now / 5000;
@@ -1006,14 +1015,25 @@ function updateCamera(dt, kartZ, t, boostK, now) {
     camState.snap = true; // resume snaps back to the chase cam
     return;
   }
-  const back = CAM.back + 2 * boostK;
-  const height = CAM.height - 0.6 * boostK;
+  // AGI WINGS glide: pull back + up and swing the aim towards the landing strip so kart + destination share the frame
+  const jf = track.course.featuresAt(kartZ).jump;
+  let gw = 0;
+  if (jf?.glide) {
+    const u = (kartZ - jf.s[0]) / (jf.s[1] - jf.s[0]);
+    gw = THREE.MathUtils.smoothstep(u, 0, 0.18) * (1 - THREE.MathUtils.smoothstep(u, 0.82, 1));
+    camState.landZ = jf.s[1];
+  }
+  camState.gw = camState.snap ? gw : lerp(camState.gw || 0, gw, 1 - Math.exp(-dt * 2.5));
+  const gwk = camState.gw;
+  const hop = track.course.hopAt(kartZ);
+  const back = CAM.back + 2 * boostK + 7 * gwk;
+  const height = CAM.height - 0.6 * boostK + 4 * gwk;
   const f = track.course.frame(kartZ - back, camFr);
   // camera sits behind, following the kart laterally with a little lag; up is half road-normal, half world-up
   const latTarget = G.kartX * LANE * CAM.lat;
   camState.x = THREE.MathUtils.lerp(camState.x, latTarget, 1 - Math.exp(-dt * 6));
   camUp.set(f.ux * 0.4, f.uy * 0.4 + 0.6, f.uz * 0.4).normalize();
-  camPosT.set(f.x + f.rx * camState.x, f.y + f.ry * camState.x, f.z + f.rz * camState.x).addScaledVector(camUp, height + track.course.hopAt(kartZ) * 0.8);
+  camPosT.set(f.x + f.rx * camState.x, f.y + f.ry * camState.x, f.z + f.rz * camState.x).addScaledVector(camUp, height + hop);
   // ease the camera so jumps/glides feel floaty
   if (!camState.init || camState.snap) { camera.position.copy(camPosT); camState.init = true; camState.snap = false; }
   else camera.position.lerp(camPosT, 1 - Math.exp(-dt * 14));
@@ -1021,7 +1041,9 @@ function updateCamera(dt, kartZ, t, boostK, now) {
   const sh = camState.shake;
   camera.position.x += (Math.random() - 0.5) * sh * 0.6;
   camera.position.y += (Math.random() - 0.5) * sh * 0.4;
-  track.worldPos(kartZ + CAM.ahead, G.kartX * 0.5, CAM.aheadH, camTarget);
+  // aim ahead at the kart's own hop height (not the hop curve 28 m ahead, which tips the camera down mid-air)
+  track.course.pos(kartZ + CAM.ahead, G.kartX * 0.5, CAM.aheadH + hop * 0.7, camTarget);
+  if (gwk > 0.001 && camState.landZ) camTarget.lerp(track.course.pos(camState.landZ + 18, G.kartX * 0.3, 0, camLand), 0.62 * gwk);
   if (G.launched) {
     const k = Math.min(1, (t - G.launchT) / 1.5);
     camTarget.lerp(kart.root.position, k);

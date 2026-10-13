@@ -60,7 +60,7 @@ export const FEATURES = [
   { type: 'tunnel', t: [37.9, 55.5] },
   { type: 'bridge', t: [55.4, 59.6], water: 'sea' },
   { type: 'rainbow', t: [59.4, 73.7] },
-  { type: 'space', t: [61.5, 74.5] },
+  { type: 'space', t: [61.5, 73.7] }, // ends where the glide starts: the sky crossfades to the desert during the glide
   { type: 'jump', t: [73.7, 77.5], glide: true },
   { type: 'cliff', t: [88.49, 95.76], side: -1, water: 'sea' },
   { type: 'tunnel', t: [110.6, 124.6], fire: true },
