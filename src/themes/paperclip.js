@@ -27,8 +27,8 @@ function clipGeo(tubular, radial, r) {
   geo.translate(0, 1.85 + r, 0); // bottom of the clip sits on y=0, ~4 units tall
   return geo;
 }
-const CLIP = clipGeo(110, 8, 0.12);
-const CLIP_LO = clipGeo(48, 5, 0.13);
+const CLIP = clipGeo(72, 6, 0.12);
+const CLIP_LO = clipGeo(30, 4, 0.13);
 
 // ---------- local helpers ----------
 const every = (rel, period, offset = 0) => rel - offset >= 0 && (rel - offset) % period < SPACING;
@@ -71,11 +71,11 @@ function giantClip(color) {
 }
 function clipPile() {
   const g = new THREE.Group();
-  const mound = mesh(G.cone(5, 3.4, 9), toon('#9aa6bd'), 0, 1.7, 0);
+  const mound = mesh(G.cone(5, 3.4, 8), toon('#9aa6bd'), 0, 1.7, 0);
   g.add(mound);
   g.add(mesh(G.sphere(1.4, 10), toon('#aeb9cf'), 0.4, 2.6, 0.6));
   const cols = [SILVER, SILVER, '#ff6fa8', SILVER, '#7fd3ff', SILVER, '#ffd23f'];
-  const spots = [[0, 3.2, 0], [-2.2, 1.6, 1.5], [2.4, 1.3, 1.8], [-1.0, 2.2, -1.6], [1.6, 2.0, -1.2], [-3.2, 0.6, 0.4], [0.8, 1.0, 3.0]];
+  const spots = [[0, 3.2, 0], [-2.2, 1.6, 1.5], [2.4, 1.3, 1.8], [1.6, 2.0, -1.2], [0.8, 1.0, 3.0]];
   spots.forEach(([x, y, z], i) => {
     const m = mesh(CLIP_LO, toon(cols[i]), x, y - 0.8, z);
     m.scale.setScalar(0.62);
@@ -105,7 +105,7 @@ function conveyor() {
   for (let i = 0; i < 5; i++) {
     const c = mesh(CLIP_LO, mat, 0, 1.68, 0);
     c.rotation.set(-Math.PI / 2, 0, 0.4 + i * 1.1);
-    c.scale.setScalar(0.38);
+    c.scale.setScalar(0.5);
     g.add(c);
     clips.push(c);
   }
@@ -125,10 +125,10 @@ function factory() {
   win.position.set(0, 3.4, 5.03);
   g.add(win);
   g.add(mesh(G.box(2.4, 2.6, 0.2), toon('#2a2848'), -5.5, 1.3, 5.05));
-  const sign = textPanel('PAPERCLIP MAXIMIZER INC.', { width: 15, height: 1.7, bg: '#ffb347', fg: INK, border: INK, borderW: 10, radius: 14 });
+  const sign = textPanel('PAPERCLIP MAXIMIZER INC.', { width: 15, height: 1.7, bg: '#ffb347', fg: INK, border: INK, borderW: 8, radius: 14, pad: 8 });
   sign.position.set(0, 6.0, 5.1);
   g.add(sign);
-  const sub = textPanel('a subsidiary of nothing (yet)', { width: 6, height: 0.7, bg: '#2a2848', fg: '#cfe0ff', border: null, borderW: 0, radius: 6 });
+  const sub = textPanel('a subsidiary of nothing (yet)', { width: 6, height: 0.8, bg: '#2a2848', fg: '#cfe0ff', border: null, borderW: 0, radius: 6, pad: 6 });
   sub.position.set(3.6, 1.0, 5.1);
   g.add(sub);
   const stackM = toon('#7a7fae'), band = toon('#ff5e7e');
@@ -163,8 +163,9 @@ function fuseSegment() {
   g.add(fresh, burnt);
   const spark = new THREE.Group();
   spark.position.y = 1.0;
-  spark.add(mesh(G.sphere(0.32, 10), glow('#fff6c0')));
-  const star = mesh(G.icosa(0.75, 0), glow('#ffb347', { transparent: true, opacity: 0.85 }));
+  spark.add(mesh(G.sphere(0.4, 10), glow('#fff6c0')));
+  spark.add(mesh(G.sphere(1.6, 12), glow('#ff9a3a', { transparent: true, opacity: 0.25, depthWrite: false, blending: THREE.AdditiveBlending })));
+  const star = mesh(G.icosa(1.0, 0), glow('#ffb347', { transparent: true, opacity: 0.85 }));
   spark.add(star);
   const bits = [];
   for (let i = 0; i < 5; i++) {
@@ -181,7 +182,7 @@ function bomb() {
   const body = new THREE.Group();
   body.position.y = 3.2;
   const mat = toonUnique('#2a2840');
-  body.add(mesh(G.sphere(3.2, 22), mat));
+  body.add(mesh(G.sphere(3.2, 18), mat));
   body.add(mesh(G.sphere(0.6, 10), glow('#8a88b8'), -1.2, 1.4, 2.5));
   body.add(mesh(G.cyl(0.9, 1.0, 0.9, 12), toon('#4a4870'), 0, 3.3, 0));
   const lbl = textPanel('P(DOOM)', { width: 4.4, height: 1.3, bg: null, fg: '#ffffff', stroke: INK, strokeW: 12 });
@@ -319,10 +320,10 @@ function memoGantry() {
   const sheet = new THREE.Group();
   sheet.position.y = 10.9;
   sheet.add(mesh(G.rbox(19.4, 5.6, 0.25, 0.06), toon('#f6f3ea'), 0, 0, -0.1));
-  const txt = textPanel(['MEMO  re: re: re: RE: paperclips', 'could we maybe make slightly fewer?', '— the board (in a reply-all)'], { width: 18.4, height: 4.8, bg: '#f6f3ea', fg: '#2b2a4a', border: null, borderW: 0, radius: 4 });
+  const txt = textPanel(['MEMO  re: re: re: RE: paperclips', 'could we maybe make slightly fewer?', '— the board (in a reply-all)'], { width: 18.4, height: 4.8, bg: '#f6f3ea', fg: '#2b2a4a', border: null, borderW: 0, radius: 4, pad: 10 });
   txt.position.z = 0.05;
   sheet.add(txt);
-  const clip = mesh(CLIP, toon(SILVER), -7.2, -1.6, 0.25);
+  const clip = mesh(CLIP, toon(SILVER), -8.9, -1.6, 0.25);
   clip.scale.setScalar(1.6);
   sheet.add(clip);
   sheet.rotation.z = 0.02;
@@ -367,9 +368,9 @@ export default {
       else if (r < 0.72) out.push({ kind: 'conveyor', x: 11.8 });
     }
     const l = rng();
-    if (l < 0.3) out.push({ kind: 'pile', x: -rng.range(16, 26), rotY: rng.range(0, 6) });
-    else if (l < 0.5) out.push({ kind: 'clip', x: -rng.range(12.5, 16), rotY: rng.range(-1.2, 1.2) });
-    if (rng.chance(0.35)) {
+    if (l < 0.22) out.push({ kind: 'pile', x: -rng.range(16, 26), rotY: rng.range(0, 6) });
+    else if (l < 0.45) out.push({ kind: 'clip', x: -rng.range(12.5, 16), rotY: rng.range(-1.2, 1.2) });
+    if (rng.chance(0.28)) {
       const side = rng.chance(0.5) ? -1 : 1;
       out.push({ kind: 'pile', x: side * rng.range(40, 80), rotY: rng.range(0, 6), scale: rng.range(2.5, 4.2) });
     }

@@ -179,8 +179,8 @@ function loopGantry() {
     g.add(on, off);
     bulbs.push([on, off]);
   });
-  const tag = textPanel('TRAINING LOOP · EXIT: NEVER', { width: 8, height: 0.9, bg: '#ffd23f', fg: INK, border: INK, borderW: 8, radius: 10 });
-  tag.position.set(0, 12.35, -0.2);
+  const tag = textPanel('TRAINING LOOP · EXIT: NEVER', { width: 9, height: 1.3, bg: '#ffd23f', fg: INK, border: INK, borderW: 8, radius: 10, pad: 8 });
+  tag.position.set(0, 12.55, -0.2);
   g.add(tag);
   g.userData.bulbs = bulbs;
   return g;
@@ -312,7 +312,6 @@ function gato() {
     const paw = mesh(G.sphere(0.42, 10), cream, s * 0.5, 0.3, 0.95); paw.scale.set(1, 0.7, 1.3); cat.add(paw);
     cat.add(mesh(G.sphere(0.8, 12), fur, s * 0.85, 0.75, -0.25));
   }
-  for (const y of [1.9, 2.4]) { const st = mesh(G.box(1.6, 0.2, 0.5), toon('#d9772a'), 0, y, -1.05); cat.add(st); }
   const head = new THREE.Group();
   head.position.set(0, 3.35, 0.25);
   const hd = mesh(G.sphere(1.0, 18), fur); hd.scale.set(1.15, 0.95, 1); head.add(hd);
@@ -382,7 +381,7 @@ function desertLayout(out, rel, rng) {
   }
   if (rng.chance(0.5)) {
     const side = rng.chance(0.5) ? -1 : 1;
-    out.push({ kind: rng.chance(0.65) ? 'mesa' : 'butte', x: side * rng.range(38, 85), rotY: rng.range(0, 6), scale: rng.range(1, 2.1) });
+    out.push({ kind: rng.chance(0.65) ? 'mesa' : 'butte', x: side * rng.range(45, 95), rotY: rng.range(0, 6), scale: rng.range(1, 2.1) });
   }
 }
 function cliffLayout(out, rel, rng, sec) {
@@ -396,7 +395,7 @@ function cliffLayout(out, rel, rng, sec) {
   const r = rng();
   if (r < 0.22) out.push({ kind: 'cactus', x: rng.range(11, 18), rotY: rng.range(-1, 1), scale: rng.range(0.9, 1.3) });
   else if (r < 0.3) out.push({ kind: 'tumbleweed', x: rng.range(13.5, 17) });
-  if (rng.chance(0.35)) out.push({ kind: rng.chance(0.6) ? 'mesa' : 'butte', x: rng.range(30, 70), rotY: rng.range(0, 6), scale: rng.range(1.1, 2) });
+  if (rng.chance(0.35)) out.push({ kind: rng.chance(0.6) ? 'mesa' : 'butte', x: rng.range(42, 85), rotY: rng.range(0, 6), scale: rng.range(1.1, 2) });
   // the abyss: clouds *below* you and mesa tops poking up from far down
   if (rng.chance(0.5)) out.push({ kind: 'cloud', x: -rng.range(26, 95), y: rng.range(-0.5, 3), scale: rng.range(2, 4) });
   if (rng.chance(0.3)) {

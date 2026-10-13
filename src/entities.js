@@ -197,6 +197,8 @@ export class Entities {
       const zf = it.t * SPEED;
       if (zf < songTime * SPEED - 8) { this._release(it); continue; } // behind the camera
       it.stateT += dt;
+      // collected things ride along with the kart so the camera never drives into them
+      if (it.state === 'got') it.dz = (songTime - it.t) * SPEED;
       const x = it.flyX ?? it.x;
       this.track.worldPos(zf + (it.dz || 0), x, it.baseY, o.position);
       o.scale.setScalar(1);

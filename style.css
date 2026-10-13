@@ -131,13 +131,13 @@ button.alt { background: #c8b8ff; }
 @keyframes countpop { 0% { transform: scale(2.2); opacity: 0; } 60% { transform: scale(0.9); opacity: 1; } }
 #count-gag { font-weight: 700; font-size: 40px; -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; text-shadow: 0 4px 0 var(--ink); }
 
-#results { gap: 10px; }
+#results { gap: 1.2vh; }
 .res-label { font-weight: 700; font-size: 28px; letter-spacing: 3px; text-shadow: 0 3px 0 var(--ink); }
-#res-pdoom { font-weight: 700; font-size: 150px; line-height: 1; color: var(--orange); -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; text-shadow: 0 10px 0 var(--ink); }
-#res-verdict { font-weight: 700; font-size: 34px; max-width: 900px; text-shadow: 0 4px 0 var(--ink); }
-.model-card { background: var(--cream); color: var(--ink); border: 5px solid var(--ink); border-radius: 18px; padding: 12px 22px; box-shadow: 0 8px 0 var(--ink); text-align: left; min-width: 420px; }
+#res-pdoom { font-weight: 700; font-size: clamp(70px, 15vh, 150px); line-height: 1; color: var(--orange); -webkit-text-stroke: 6px var(--ink); paint-order: stroke fill; text-shadow: 0 10px 0 var(--ink); }
+#res-verdict { font-weight: 700; font-size: clamp(20px, 4vh, 34px); max-width: 900px; text-shadow: 0 4px 0 var(--ink); }
+.model-card { background: var(--cream); color: var(--ink); border: 5px solid var(--ink); border-radius: 18px; padding: 1vh 22px; box-shadow: 0 8px 0 var(--ink); text-align: left; min-width: 420px; }
 .mc-title { font-weight: 700; font-size: 22px; letter-spacing: 2px; border-bottom: 3px dashed var(--ink); margin-bottom: 6px; padding-bottom: 4px; }
-#res-card td { padding: 2px 10px 2px 0; font-size: 18px; }
+#res-card td { padding: 1px 10px 1px 0; font-size: clamp(13px, 2.3vh, 18px); }
 #res-card td:last-child { font-weight: 700; }
 
 #debug { position: absolute; left: 10px; top: 200px; max-width: 330px; white-space: pre-wrap !important; background: rgba(0,0,0,0.75); color: #9f9; font: 13px/1.4 ui-monospace, Menlo, monospace; padding: 8px 12px; border-radius: 8px; white-space: pre; pointer-events: auto; z-index: 50; }

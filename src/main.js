@@ -102,7 +102,7 @@ async function boot() {
   if (startSec) {
     // dev shortcut: straight into a section with the keyboard
     const i = clamp(parseInt(startSec, 10) - 1, 0, sections.length - 1);
-    startRace({ webcam: false, from: sections[i].start, countdown: false });
+    startRace({ webcam: false, from: sections[i].start + 0.06, countdown: false });
   } else {
     showScreen('title');
     mode = 'TITLE';
@@ -150,6 +150,8 @@ function toTitle() {
   paused = false;
   hud.show(false);
   hud.clearSplats();
+  hud.setGold(false);
+  hud.el.redwash.style.opacity = '0';
   showScreen('title');
   resetWorld(0);
 }
@@ -195,7 +197,7 @@ function resetGame() {
     doomX: TUNE.start, pDoom: 0.5, gpus: 0, combo: 0, maxCombo: 0, hits: 0, misses: 0, hazardsHit: 0, ringsHit: 0, chains: 0, flawless: 0, nearMisses: 0, shieldsUsed: 0,
     kartX: 0, kartVel: 0, bounceV: 0, steer: 0, boostUntil: -1, boostStart: -9, boostCooldownUntil: -1,
     power: null, powerUntil: 0, spinUntil: -1, hurtUntil: -1, sectionIdx: -1, sectionMisses: 0, tier: 0, cooked: false,
-    launchAt: Infinity, launched: false, finished: false, bonus: [],
+    launchAt: Infinity, launched: false, finished: false, bonus: [], lastAgiLine: -99, sectionEnteredAt: 0,
   });
   G.chainProgress = new Map();
   input.invertUntil = input.freezeUntil = input.wobbleUntil = 0;
@@ -274,7 +276,7 @@ function updateCountdown(dt) {
 function jumpToSection(i) {
   if (mode !== 'RACE' && mode !== 'COUNTDOWN') return;
   i = clamp(i, 0, sections.length - 1);
-  const t = sections[i].start;
+  const t = sections[i].start + 0.06; // audio starts 50 ms after scheduling
   const keepWebcam = G.webcam;
   resetGame();
   G.webcam = keepWebcam;
@@ -296,6 +298,9 @@ function finish() {
   mode = 'RESULTS';
   audio.stop();
   hud.show(false);
+  hud.setGold(false);
+  hud.el.redwash.style.opacity = '0';
+  $('stage').classList.remove('wavy', 'inverted');
   const p = G.pDoom;
   $('res-pdoom').textContent = p.toFixed(2);
   let verdict;
@@ -389,7 +394,7 @@ function screenOf(zf, x, y) {
 }
 function boosting(t) { return t < G.boostUntil; }
 function startBoost(t, dur, line = true) {
-  if (!boosting(t) && line) hud.announce('FEEL THE AGI!', 1300);
+  if (!boosting(t) && line && t - (G.lastAgiLine ?? -99) > 10) { hud.announce('FEEL THE AGI!', 1300); G.lastAgiLine = t; }
   G.boostStart = t;
   G.boostUntil = Math.max(G.boostUntil, t + dur);
   sfx.play('boost');
@@ -672,7 +677,7 @@ function updateRace(dt) {
     const prevIdx = G.sectionIdx;
     if (prevIdx >= 0 && level.sections[prevIdx]) {
       const ps = level.sections[prevIdx];
-      if (G.sectionMisses === 0 && ps.noteCount > 4 && si === prevIdx + 1) {
+      if (G.sectionMisses === 0 && ps.noteCount > 4 && si === prevIdx + 1 && G.sectionEnteredAt <= ps.start + 0.5) {
         G.flawless++;
         addDoom(TUNE.flawless);
         sfx.play('ding');
@@ -681,6 +686,7 @@ function updateRace(dt) {
     }
     G.sectionIdx = si;
     G.sectionMisses = 0;
+    G.sectionEnteredAt = t;
     const sec = sections[si];
     const th = getTheme(sec.theme);
     if (!(prevIdx >= 0 && G.sectionMisses === 0 && false)) {
