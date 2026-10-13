@@ -30,7 +30,7 @@ export const TUNE = {
   flawless: -0.25,
   nearMissGpu: 1,
   hitNote: 0.2, // lateral hit window (normalized)
-  hitRing: 0.2,
+  hitRing: 0.3, // halos are big now: fly through anywhere inside
   hitPower: 0.28,
   kartHalf: 0.1, // added to hazard half-width
   nearMiss: 0.25,

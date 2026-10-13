@@ -61,11 +61,11 @@ export function makeGPU() {
 
 export function makeRing() {
   const g = new THREE.Group();
-  const t = mesh(G.torus(1.55, 0.2, 40), glow('#ffe066'), 0, 0, 0);
+  const t = mesh(G.torus(3.0, 0.24, 56), glow('#ffe066'), 0, 0, 0);
   g.add(t);
-  const t2 = mesh(G.torus(1.55, 0.3, 40), toon('#ffb800', { transparent: true, opacity: 0.35, outline: false }), 0, 0, 0);
+  const t2 = mesh(G.torus(3.0, 0.36, 56), toon('#ffb800', { transparent: true, opacity: 0.35, outline: false }), 0, 0, 0);
   g.add(t2);
-  const gl = glowSprite('#ffe680', 5.5, 0.4);
+  const gl = glowSprite('#ffe680', 10.2, 0.32);
   g.add(gl);
   g.userData.inner = t;
   return g;
@@ -131,7 +131,7 @@ export class Entities {
     this.live = new Set();
     this.lists = [
       { arr: level.notes, kind: 'gpu', y: 1.15 },
-      { arr: level.rings, kind: 'ring', y: 1.6 },
+      { arr: level.rings, kind: 'ring', y: 2.7 },
       { arr: level.hazards, kind: 'hazard', y: 0 },
       { arr: level.powerups, kind: 'power', y: 1.4 },
     ];

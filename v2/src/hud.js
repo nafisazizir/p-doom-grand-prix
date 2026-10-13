@@ -1,4 +1,5 @@
 // DOM overlay: P(doom), GPUs, combo, announcer, section cards, captions, popups, splats, PiP + wheel widget, FX canvas.
+import { karaoke, KARAOKE_CSS } from '../../src/karaoke.js';
 import { hands } from '../../src/hands.js';
 
 const $ = (id) => document.getElementById(id);
@@ -136,26 +137,17 @@ export const hud = {
   },
 
   // ---------- lyrics ----------
-  async loadLyrics(url) {
-    try {
-      const txt = await fetch(url).then((r) => (r.ok ? r.text() : ''));
-      this.lyrics = [];
-      for (const line of txt.split('\n')) {
-        const m = line.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)$/);
-        if (m) this.lyrics.push({ t: +m[1] * 60 + +m[2], text: m[3].trim() });
-      }
-    } catch (e) { this.lyrics = []; }
-  },
-  updateCaption(t) {
-    let idx = -1;
-    for (let i = 0; i < this.lyrics.length; i++) if (this.lyrics[i].t <= t + 0.05) idx = i;
-    // hide a line after 6 s or when next starts
-    if (idx >= 0 && t - this.lyrics[idx].t > 6) idx = -2;
-    if (idx !== this.lyricIdx) {
-      this.lyricIdx = idx;
-      this.el.caption.textContent = idx >= 0 ? this.lyrics[idx].text : '';
+  async loadLyrics() {
+    // karaoke: word-by-word highlighted lyrics (falls back to nothing if the file is missing)
+    if (!document.getElementById('karaoke-css')) {
+      const st = document.createElement('style');
+      st.id = 'karaoke-css';
+      st.textContent = KARAOKE_CSS;
+      document.head.appendChild(st);
     }
+    await karaoke.init(this.el.caption);
   },
+  updateCaption(t) { karaoke.update(t); },
 
   // ---------- webcam PiP ----------
   showPip(on) { this.el.pip.classList.toggle('hidden', !on); },
