@@ -24,8 +24,10 @@ const T_HAIR = [80.4, 83.3];
 const T_CLIFF = 88.4;
 
 // ---------- looks: the desert sunset, then golden hour on the clifftop (picked when the section look is applied) ----------
+// env 'dusk' (no HDR sun peak): the 'sunset' HDRI's sun is fixed in world space and reflects off the road / sea as
+// a giant bloom blob wherever the course happens to point at it.
 const DESERT_LOOK = {
-  sky: 'sunset', env: 'sunset', exposure: 1.0,
+  sky: 'sunset', env: 'dusk', envIntensity: 0.75, exposure: 1.0,
   sun: { elev: 15, azim: 100, color: '#ffb377', intensity: 3.6 },
   skyParams: { turbidity: 6, rayleigh: 2.6, mie: 0.009, clouds: 0.28 },
   fog: { color: '#eaa77a', density: 0.0011 },
@@ -33,7 +35,6 @@ const DESERT_LOOK = {
 };
 const CLIFF_LOOK = {
   ...DESERT_LOOK,
-  env: 'dusk', // the sunset HDRI's sun peak turns the sea into one giant bloom blob
   exposure: 0.95,
   envIntensity: 0.6,
   sun: { elev: 9, azim: -104, color: '#ffb35c', intensity: 4.0 },
@@ -985,7 +986,12 @@ function lighthouse() {
   });
   const beam = new THREE.Group();
   beam.position.y = SEA_BASE - 4 + 50 + 26 + 2.2;
-  const bm = glow('#fff0c0', { intensity: 1.2, transparent: true, opacity: 0.13, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const btex = canvasTex('lhbeam', 8, 128, (x, w, h) => {
+    const gr = x.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,255,255,0.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = gr; x.fillRect(0, 0, w, h);
+  });
+  const bm = new THREE.MeshBasicMaterial({ map: btex, color: new THREE.Color('#fff0c0').multiplyScalar(0.35), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
   for (const s of [-1, 1]) {
     const c = mesh(G.cone(7, 110, 24, true), bm, s * 55, 0, 0);
     c.rotation.z = s * Math.PI / 2;
@@ -1186,7 +1192,6 @@ export default {
   },
   animate(obj, kind, t, beat, e) {
     const u = obj.userData;
-    ((globalThis.__bl ||= {})[kind] ||= new Set()).add(obj); // DEBUG
     switch (kind) {
       case 'apron': case 'hairpinA': case 'hairpinB': case 'headland':
         // world-space geometry: undo the engine's placement

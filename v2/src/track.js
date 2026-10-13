@@ -80,7 +80,7 @@ export class Track {
     const C = this.course;
     let best = 0;
     for (let d = -60; d <= 60; d += 10) {
-      const k = (C.frame(s + d + 4, _fr).yaw - C.frame(s + d - 4, _fr).yaw) / 8;
+      const k = (C.frame(s + d + 4, _frC).yaw - C.frame(s + d - 4, _frC).yaw) / 8;
       if (Math.abs(k) > Math.abs(best)) best = k;
     }
     return best;
@@ -88,12 +88,12 @@ export class Track {
   _groundBase(s, feat) {
     // height of the land under bridges/highways: the road height where the feature began
     const f0 = feat.s[0];
-    return this.course.frame(f0, _fr).y - (feat.type === 'bridge' ? 9 : 2);
+    return this.course.frame(f0, _frG).y - (feat.type === 'bridge' ? 9 : 2);
   }
   /** terrain height (world y) at arc length s and lateral offset (yaw frame). null = no ground there */
   terrainY(s, lat) {
     const m = this._mode(s);
-    const f = this.course.frame(s, _fr);
+    const f = this.course.frame(s, _frT);
     const look = lookFor(this.themeAtZ(s));
     if (m.kind === 'none') return null;
     if (m.kind === 'water') {
@@ -517,7 +517,7 @@ export class Track {
     if (feats.tunnel && Math.abs(lat) > TUNNEL_W - 1.5 && !overhead) return;
     if (feats.tunnel && overhead && (p.y || 0) > 15) return;
     let baseY = null;
-    const fr = C.frame(zf, _fr);
+    const fr = C.frame(zf, _frS);
     if (feats.rainbow || feats.space) baseY = fr.y; // floats in space: fine
     else if (overhead || Math.abs(lat) <= H + 1.5) baseY = fr.y;
     else {
@@ -587,7 +587,7 @@ export class Track {
     g.fillStyle = '#ffd23f'; g.font = "700 150px Fredoka, sans-serif"; g.fillText(b, 512, 290, 980);
     g.fillStyle = '#c8b8ff'; g.font = "600 52px Fredoka, sans-serif"; g.fillText(c, 512, 410, 980);
     this.liveTex.needsUpdate = true;
-    const fr = this.course.frame(z, _fr);
+    const fr = this.course.frame(z, _frS);
     const side = this.liveIdx % 2 ? 1 : -1;
     const lat = side * (H + 9);
     const ty = this.terrainY(z, lat) ?? fr.y;
@@ -639,6 +639,6 @@ export class Track {
   }
 }
 
-const _fr = {};
+const _fr = {}, _frT = {}, _frG = {}, _frC = {}, _frS = {};
 const _up = new THREE.Vector3(0, 1, 0);
 const _red = new THREE.Color('#ff2020');
