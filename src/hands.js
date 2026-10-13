@@ -1,6 +1,6 @@
 // MediaPipe HandLandmarker → invisible steering wheel.
 // Runs in its own requestVideoFrameCallback loop, independent of rendering.
-import { FilesetResolver, HandLandmarker } from '../vendor/mediapipe/vision_bundle.mjs';
+// Detection runs in a Web Worker (src/hands-worker.js); falls back to the main thread if the worker can't start.
 
 const DEAD = 6, MAX = 40;
 const GRACE_MS = 250; // a hand vanishing for a frame or two keeps your last steering
@@ -28,7 +28,12 @@ export const hands = {
   ready: false,
   error: null,
   video: null,
-  landmarker: null,
+  landmarker: null, // only set on the main-thread fallback path
+  backend: '', // 'worker/GPU' | 'worker/CPU' | 'main/GPU' | 'main/CPU'
+  _worker: null,
+  _workerReady: false,
+  _inFlight: false,
+  _sentAt: 0,
   pts: [], // [{x,y}] palm centres (mirrored), sorted left→right
   lms: [], // raw mirrored landmark arrays for drawing
   angleDeg: 0,
@@ -56,20 +61,13 @@ export const hands = {
       video.srcObject = stream;
       await video.play();
       this.video = video;
-      const vision = await FilesetResolver.forVisionTasks(new URL('../vendor/mediapipe/wasm', import.meta.url).href);
-      const opts = (delegate) => ({
-        baseOptions: { modelAssetPath: new URL('../vendor/mediapipe/hand_landmarker.task', import.meta.url).href, delegate },
-        runningMode: 'VIDEO',
-        numHands: 2,
-        minHandDetectionConfidence: 0.5,
-        minHandPresenceConfidence: 0.5,
-        minTrackingConfidence: 0.5,
-      });
+      // Prefer a worker so the ~10-15 ms detectForVideo() call never blocks a render frame.
       try {
-        this.landmarker = await HandLandmarker.createFromOptions(vision, opts('GPU'));
+        await this._initWorker();
       } catch (e) {
-        console.warn('GPU delegate failed, using CPU', e);
-        this.landmarker = await HandLandmarker.createFromOptions(vision, opts('CPU'));
+        console.warn('hand-tracking worker unavailable, detecting on the main thread', e);
+        this._killWorker();
+        await this._initMain();
       }
       this.ready = true;
       this._loop();
@@ -80,6 +78,74 @@ export const hands = {
       this.error = e;
       this._initing = null;
       throw e;
+    }
+  },
+
+  _initWorker() {
+    return new Promise((resolve, reject) => {
+      if (typeof Worker === 'undefined' || typeof createImageBitmap === 'undefined') { reject(new Error('no Worker/createImageBitmap')); return; }
+      if (new URLSearchParams(location.search).has('handsmain')) { reject(new Error('?handsmain: worker disabled')); return; } // debug: force the main-thread path
+      const w = new Worker(new URL('./hands-worker.js', import.meta.url), { type: 'module' });
+      this._worker = w;
+      const timer = setTimeout(() => reject(new Error('worker init timed out')), 20000);
+      w.onerror = (ev) => {
+        ev.preventDefault?.();
+        const err = new Error('worker error: ' + (ev.message || 'failed to load'));
+        if (!this._workerReady) { clearTimeout(timer); reject(err); }
+        else this._workerFailed(err);
+      };
+      w.onmessage = (ev) => {
+        const m = ev.data;
+        if (m.type === 'ready') {
+          clearTimeout(timer);
+          this._workerReady = true;
+          this.backend = 'worker/' + m.delegate;
+          resolve();
+        } else if (m.type === 'error') {
+          clearTimeout(timer);
+          reject(new Error(m.message));
+        } else if (m.type === 'result') {
+          this._inFlight = false;
+          if (m.error) { if (!this._warned) { console.warn('hand detection failed in worker', m.error); this._warned = true; } return; }
+          this.detectMs = m.detectMs;
+          this._apply(m.landmarks, performance.now());
+        }
+      };
+      w.postMessage({ type: 'init' });
+    });
+  },
+
+  _killWorker() {
+    if (this._worker) { this._worker.terminate(); this._worker = null; }
+    this._workerReady = false;
+    this._inFlight = false;
+  },
+
+  // worker died after starting: switch to the main-thread path (the rVFC loop keeps running)
+  async _workerFailed(err) {
+    console.warn('hand-tracking worker failed, switching to main thread', err);
+    this._killWorker();
+    try { await this._initMain(); } catch (e) { this.error = e; }
+  },
+
+  async _initMain() {
+    const { FilesetResolver, HandLandmarker } = await import('../vendor/mediapipe/vision_bundle.mjs');
+    const vision = await FilesetResolver.forVisionTasks(new URL('../vendor/mediapipe/wasm', import.meta.url).href);
+    const opts = (delegate) => ({
+      baseOptions: { modelAssetPath: new URL('../vendor/mediapipe/hand_landmarker.task', import.meta.url).href, delegate },
+      runningMode: 'VIDEO',
+      numHands: 2,
+      minHandDetectionConfidence: 0.5,
+      minHandPresenceConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+    try {
+      this.landmarker = await HandLandmarker.createFromOptions(vision, opts('GPU'));
+      this.backend = 'main/GPU';
+    } catch (e) {
+      console.warn('GPU delegate failed, using CPU', e);
+      this.landmarker = await HandLandmarker.createFromOptions(vision, opts('CPU'));
+      this.backend = 'main/CPU';
     }
   },
 
@@ -97,14 +163,37 @@ export const hands = {
   _detect() {
     const v = this.video;
     if (v.readyState < 2 || v.currentTime === this._lastVideoTime) return;
+    if (this._workerReady) {
+      // at most one frame in flight: drop frames while the worker is busy
+      const ts = performance.now();
+      if (this._inFlight && ts - this._sentAt < 1000) return; // (watchdog: a lost reply can't stall us)
+      this._lastVideoTime = v.currentTime;
+      this._inFlight = true;
+      this._sentAt = ts;
+      const vw = v.videoWidth || 640, vh = v.videoHeight || 480;
+      const w = this._worker;
+      createImageBitmap(v, { resizeWidth: 480, resizeHeight: Math.round((480 * vh) / vw), resizeQuality: 'low' }).then(
+        (bitmap) => {
+          if (w !== this._worker) { bitmap.close(); return; } // worker was replaced meanwhile
+          w.postMessage({ type: 'frame', bitmap, ts }, [bitmap]);
+        },
+        (e) => { this._inFlight = false; if (!this._warned) { console.warn('createImageBitmap failed', e); this._warned = true; } },
+      );
+      return;
+    }
+    if (!this.landmarker) return; // fallback still loading
     this._lastVideoTime = v.currentTime;
     const t0 = performance.now();
     const res = this.landmarker.detectForVideo(v, t0);
     this.detectMs = performance.now() - t0;
-    const now = performance.now();
+    this._apply(res.landmarks, performance.now());
+  },
+
+  /** shared by both paths: raw (un-mirrored) landmarks → pts/lms/angle/steering */
+  _apply(landmarks, now) {
     this._detN++;
     if (now - this._detT0 > 1000) { this.detectHz = (this._detN * 1000) / (now - this._detT0); this._detN = 0; this._detT0 = now; }
-    const lms = (res.landmarks || []).map((hand) => hand.map((p) => ({ x: 1 - p.x, y: p.y }))); // mirror
+    const lms = (landmarks || []).map((hand) => hand.map((p) => ({ x: 1 - p.x, y: p.y }))); // mirror
     // palm centre = mean of 0,5,9,13,17
     const palms = lms.map((h) => {
       let x = 0, y = 0;
