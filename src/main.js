@@ -393,6 +393,21 @@ function computeRain() {
 }
 
 // ---------------- scoring helpers ----------------
+// karaoke hype words shake the world a little
+window.addEventListener('karaoke-hype', (e) => {
+  if (mode !== 'RACE' || paused) return;
+  if (e.detail === 'pdoom') {
+    camState.shake = Math.max(camState.shake, 0.45);
+    const el = $('pdoom');
+    el.classList.remove('pulse-up'); void el.offsetWidth; el.classList.add('pulse-up');
+  } else if (e.detail === 'boom') {
+    camState.shake = Math.max(camState.shake, 1.1);
+    hud.flash(0.35, 220);
+  } else if (e.detail === 'foom') {
+    camState.shake = Math.max(camState.shake, 0.6);
+  }
+});
+
 function addDoom(d) {
   if (G.god) return;
   const before = G.pDoom;
