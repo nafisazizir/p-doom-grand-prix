@@ -288,7 +288,7 @@ const CHAT = {
   glass: ['#bfe3ff', '#d9c8ff', '#ffd6ec', '#c8f5e6', '#fff1c4'],
 };
 const SYD = {
-  bubble: '#fff0f6', bubbleFg: '#9a1050', user: '#ff2d7a', userFg: '#ffffff', bot: '#ff8fc0',
+  bubble: '#ffd9ea', bubbleFg: '#8a0c48', user: '#ff2d7a', userFg: '#ffffff', bot: '#ff8fc0',
   dark: '#4a0a2a', accent: '#ff9ec8', post: '#d65a94', mouth: '#5a0a2a', tongue: '#ff3d6e', lip: '#ff5f9a',
 };
 const gloss = (c, o = {}) => MAT.paint(c, o);
@@ -1171,7 +1171,7 @@ export default {
     const rel = zf - sec.start * SPEED;
     const G0 = (p) => placeGround(out, zf, p);
     // ---- set pieces (one each) ----
-    if (rel >= 0 && rel < 10) out.push({ kind: 'gantry0', x: 0, y: 6 });
+    if (rel >= 20 && rel < 30) out.push({ kind: 'gantry0', x: 0, y: 6 });
     if (rel >= 50 && rel < 60) out.push({ kind: 'gantry1', x: 0, y: 6 });
     if (rel >= 100 && rel < 110) out.push({ kind: 'maw', x: 0, y: 6 });
     if (rel >= 140 && rel < 150) out.push({ kind: 'gantry2', x: 0, y: 6 });
@@ -1268,7 +1268,7 @@ export const sydney = {
   },
   look: {
     sky: 'sunset', env: 'dusk', exposure: 1.1,
-    sun: { elev: 3, azim: -50, color: '#ff9ac0', intensity: 2.8 },
+    sun: { elev: 4, azim: -100, color: '#ff9ac0', intensity: 2.8 },
     skyParams: { turbidity: 8, rayleigh: 4, mie: 0.01, clouds: 0.6 },
     fog: { color: '#f0a0cc', density: 0.0012 },
     ground: { tex: 'sand', tint: '#ffd2e4', scale: 6 },

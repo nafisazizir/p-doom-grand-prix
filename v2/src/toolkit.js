@@ -150,13 +150,18 @@ export function roundRect(g, x, y, w, h, r) {
   g.closePath();
 }
 
+const panelMats = new Map();
 /** A flat panel with text on it (both sides readable from the front). size in world units. */
 export function textPanel(text, { width = 6, height = 3, ...opts } = {}) {
   const aspect = width / height;
   const W = 512, H = Math.round(512 / aspect);
   const tex = textTexture(text, { w: W, h: H, ...opts });
-  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
-  mat.color.setScalar(0.92); // signage reads like a lit panel without blooming
+  let mat = panelMats.get(tex);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
+    mat.color.setScalar(0.92); // signage reads like a lit panel without blooming
+    panelMats.set(tex, mat);
+  }
   return new THREE.Mesh(G.plane(width, height), mat);
 }
 

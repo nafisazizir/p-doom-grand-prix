@@ -395,6 +395,14 @@ function buildBay(k, P, o) {
     cabinet(k, P, 0, 4.6);
     cabinet(k, P, 4.8, 4.6);
   }
+  if (o.melt) {
+    // molten drips + a glowing puddle (merged into the bay)
+    for (let i = 0; i < 14; i++) {
+      const x = -6.8 + i * 1.0 + hsh(i, 3) * 0.4, len = 0.4 + hsh(i, 7) * 1.4;
+      k.add(G.capsule(0.07 + hsh(i, 9) * 0.05, len), 'glowHot', i % 3 ? '#ff7a1a' : '#ffc040', [x, 2.2 - len / 2 + hsh(i, 5) * 1.2, 1.0 + hsh(i, 11) * 0.3]);
+    }
+    k.add(cachedGeo('puddle', () => new THREE.CircleGeometry(1, 24).rotateX(-PI / 2)), 'glow', '#ff6a1a', [0, 0.19, 1.3], O3, [6.0, 1, 0.8]);
+  }
   if (o.pipes) floorPipes(k, P);
   if (o.fence) fenceRun(k, P, seed);
   overhead(k, P);
@@ -483,24 +491,11 @@ function bay(P, kind) {
     }[kind] || [];
     if (spots.length) g.add(flames('bay' + kind, spots.map(([x, y, z, s]) => [x, y - 0.1, z, s])));
     if (spots.length) g.add(particles('emb' + kind, 'ember', spots.map(([x, y, z, s]) => [x, y + 1.2, z, s * 1.6]), 14));
-    if (kind === 'melt' || kind === 'trans' || kind === 'fine' || kind === 'bay') g.add(particles('smk' + kind, 'smoke', spots.map(([x, y, z]) => [x, y + 2.2, z - 0.3, 1.0]), 6));
+    if (kind === 'melt' || kind === 'trans' || kind === 'fine') g.add(particles('smk' + kind, 'smoke', spots.map(([x, y, z]) => [x, y + 2.2, z - 0.3, 1.0]), 6));
     if (kind === 'trans') g.add(particles('spk' + kind, 'spark', [[0, 9.4, -2.6, 3], [-0.4, 6.2, -2.6, 3]], 16));
-    if (kind === 'melt') {
-      const drips = kitProp('drips', (k) => {
-        for (let i = 0; i < 14; i++) {
-          const x = -6.8 + i * 1.0 + hsh(i, 3) * 0.4, len = 0.4 + hsh(i, 7) * 1.4;
-          k.add(G.capsule(0.07 + hsh(i, 9) * 0.05, len), 'glowHot', i % 3 ? '#ff7a1a' : '#ffc040', [x, 2.2 - len / 2 + hsh(i, 5) * 1.2, 1.0 + hsh(i, 11) * 0.3]);
-        }
-      });
-      g.add(drips);
-      // molten puddle
-      const pud = mesh(cachedGeo('puddle', () => new THREE.CircleGeometry(1, 24).rotateX(-PI / 2)), glow('#ff6a1a', { intensity: 2.2 }), 0, 0.18, 1.2);
-      pud.scale.set(6.0, 1, 0.9);
-      g.add(pud);
-    }
-    if (kind === 'bay' || kind === 'tank' || kind === 'dense') {
+    if (kind === 'tank' || kind === 'dense') {
       const b = alarmBeacon('#ff2a2a', 0.5);
-      b.position.set(kind === 'bay' ? 0 : -1.85, RACK_TOP, 0);
+      b.position.set(-1.85, RACK_TOP, 0);
       g.add(b);
       u.beacon = b;
     }

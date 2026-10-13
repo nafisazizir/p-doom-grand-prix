@@ -191,6 +191,9 @@ export class Renderer {
   }
 
   render() {
+    // count every pass (scene, shadows, AO, post) in renderer.info
+    this.renderer.info.autoReset = false;
+    this.renderer.info.reset();
     if (this.Q.ao || this.Q.bloom) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
   }

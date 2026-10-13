@@ -65,7 +65,7 @@ export class Track {
   // ---------- terrain model ----------
   _mode(s) {
     const f = this.course.featuresAt(s);
-    if (f.rainbow || f.jump || (f.space && !f.tunnel)) return { kind: 'none', f };
+    if (f.rainbow || (f.jump && f.jump.glide) || (f.space && !f.tunnel)) return { kind: 'none', f };
     if (f.bridge) return { kind: 'water', f };
     if (f.highway) return { kind: 'highway', f };
     return { kind: 'normal', f, cliff: f.cliff ? f.cliff.side : 0 };
@@ -73,7 +73,7 @@ export class Track {
   _hills(s, lat, look) {
     const a = Math.abs(lat);
     const amp = (look?.hills ?? 1) * (a < H + 8 ? 0 : a < 40 ? (a - H - 8) / (40 - H - 8) * 6 : a < 120 ? 6 + (a - 40) * 0.35 : 34 + (a - 120) * 0.45);
-    return amp * (fbm(s * 0.006 + (lat > 0 ? 50 : 0), a * 0.012) - 0.25);
+    return Math.min(amp, 48 * (look?.hills ?? 1)) * (fbm(s * 0.006 + (lat > 0 ? 50 : 0), a * 0.012) - 0.25);
   }
   /** worst-case curvature (rad/unit) around s, signed (+ = turning right) */
   _curv(s) {
@@ -105,7 +105,10 @@ export class Track {
     if (m.cliff && Math.sign(lat) === m.cliff && Math.abs(lat) > H + 1) return f.y - 60;
     const a = Math.abs(lat);
     const emb = a <= H + 1.2 ? 0.05 : -0.25;
-    return f.y + emb + this._hills(s, lat, look);
+    // match the banked road edge, fading back to level ground further out
+    const edge = Math.sign(lat) * Math.min(a, H + 1.3);
+    const bankY = f.ry * edge * (a <= H + 4 ? 1 : Math.max(0, 1 - (a - H - 4) / 30));
+    return f.y + bankY + emb + this._hills(s, lat, look);
   }
 
   // ---------- static geometry ----------
@@ -371,8 +374,9 @@ export class Track {
       const fr = C.frame(s, {});
       minx = Math.min(minx, fr.x); maxx = Math.max(maxx, fr.x); minz = Math.min(minz, fr.z); maxz = Math.max(maxz, fr.z); miny = Math.min(miny, fr.y);
     }
-    const pad = f.type === 'cliff' ? 900 : 500;
-    const w = maxx - minx + pad * 2, d = maxz - minz + pad * 2;
+    const span = Math.hypot(maxx - minx, maxz - minz);
+    const radius = f.type === 'cliff' ? span / 2 + 520 : span / 2 + 95;
+    const w = radius * 2, d = radius * 2;
     const y = f.type === 'cliff' ? miny - 48 : this._groundBase(sA, f) + 1;
     const nm = WATER() ? textureAt(WATER(), false) : null;
     if (nm) { nm.wrapS = nm.wrapT = THREE.RepeatWrapping; }
@@ -383,7 +387,7 @@ export class Track {
       normalMap: nm ? nm.clone() : null, normalScale: new THREE.Vector2(0.6, 0.6),
     });
     if (mat.normalMap) { mat.normalMap.needsUpdate = true; mat.normalMap.repeat.set(w / 40, d / 40); }
-    const plane = new THREE.Mesh(new THREE.PlaneGeometry(w, d, 1, 1), mat);
+    const plane = new THREE.Mesh(new THREE.CircleGeometry(radius, 64), mat);
     plane.rotation.x = -Math.PI / 2;
     plane.position.set((minx + maxx) / 2, y, (minz + maxz) / 2);
     plane.receiveShadow = true;
@@ -429,7 +433,8 @@ export class Track {
     const th = getTheme(this.sections[si].theme);
     let look = lookFor(th);
     const feats = this.course.featuresAt(kartZ);
-    if (feats.space && look.sky !== 'space') look = { ...look, sky: 'space', env: 'night', nightColors: { top: '#05010f', horizon: '#2a0a3a', nebula: '#ff4fd8' }, fog: { color: '#1a0830', density: 0.0008 }, sun: { ...look.sun, elev: 30, intensity: 2 } };
+    if (feats.space && look.sky !== 'space' && th.spaceLook) look = { ...look, ...th.spaceLook, sky: 'space' };
+    else if (feats.space && look.sky !== 'space') look = { ...look, sky: 'space', env: 'night', nightColors: { top: '#05010f', horizon: '#2a0a3a', nebula: '#ff4fd8' }, fog: { color: '#1a0830', density: 0.0008 }, sun: { ...look.sun, elev: 30, intensity: 2 } };
     const key = si + (feats.space ? 's' : '');
     if (key !== this.lookKey) {
       this.lookKey = key;
@@ -529,7 +534,7 @@ export class Track {
     else {
       obj = p.make ? p.make() : th.makeProp(p.kind);
       if (!obj) return;
-      obj.traverse((o) => { if (o.isMesh) { o.castShadow = !o.material?.transparent; o.receiveShadow = true; } });
+      obj.traverse((o) => { if (o.isMesh) { const m = o.material; o.castShadow = !!m && !m.transparent && !m.isMeshBasicMaterial && !m.isShaderMaterial; o.receiveShadow = true; } });
     }
     const cy = Math.cos(fr.yaw), sy = Math.sin(fr.yaw);
     obj.position.set(fr.x + cy * lat, baseY + (p.y || 0), fr.z + sy * lat);

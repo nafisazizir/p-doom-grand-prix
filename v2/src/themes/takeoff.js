@@ -809,8 +809,8 @@ export default {
   },
   look: {
     sky: 'dusk', env: 'dusk', exposure: 0.8, hills: 1.5,
-    sun: { elev: 5, azim: 24, color: '#ff8a50', intensity: 3.4 },
-    skyParams: { turbidity: 6, rayleigh: 3.2, mie: 0.009, clouds: 0.45 },
+    sun: { elev: 7, azim: 42, color: '#ff8a50', intensity: 3.4 },
+    skyParams: { turbidity: 4.5, rayleigh: 3.0, mie: 0.005, clouds: 0.45 },
     fog: { color: '#7a4050', density: 0.0012 },
     ground: { tex: 'dirt', tint: '#6a4a46', scale: 7 }, road: { tex: 'metalplate', tint: '#8a8a98' },
   },

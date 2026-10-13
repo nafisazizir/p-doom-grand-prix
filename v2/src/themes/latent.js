@@ -2,7 +2,7 @@
 // Embedding-vector constellations, a gigantic moon with NVDA's candlestick chart rocketing up to it, drifting
 // asteroids, a building-sized crowned basilisk going BOOM, a mechanical FLOP odometer, the OMEGA POINT gantry
 // (3 exits), a rotating space-station billboard ring, a safety-eval satellite and a GPU that went to space.
-import { THREE, toon, glow, G, mesh, textPanel, makeRng, FONT, MAT, physical, roundRect } from '../toolkit.js';
+import { THREE, toon, glow, G, mesh, textPanel, makeRng, FONT, MAT } from '../toolkit.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { surface } from '../textures.js';
 import { model } from '../models.js';

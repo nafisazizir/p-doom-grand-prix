@@ -33,10 +33,12 @@ const DESERT_LOOK = {
 };
 const CLIFF_LOOK = {
   ...DESERT_LOOK,
-  exposure: 0.98,
-  sun: { elev: 9, azim: -104, color: '#ffc27a', intensity: 3.6 },
+  env: 'dusk', // the sunset HDRI's sun peak turns the sea into one giant bloom blob
+  exposure: 0.95,
+  envIntensity: 0.6,
+  sun: { elev: 9, azim: -104, color: '#ffb35c', intensity: 4.0 },
   skyParams: { turbidity: 5, rayleigh: 2.2, mie: 0.012, clouds: 0.38 },
-  fog: { color: '#f4b98c', density: 0.0011 },
+  fog: { color: '#d9a27c', density: 0.0009 },
 };
 
 // ---------- course access (for set pieces that hug the road) ----------
