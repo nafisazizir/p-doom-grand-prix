@@ -319,7 +319,7 @@ function finish() {
     ['Hazards hit', G.hazardsHit],
     ['Hallucination rate', G.hazardsHit > 6 ? 'yes' : G.hazardsHit > 2 ? 'sometimes' : 'only on Tuesdays'],
     ['Parameters', (G.gpus * 1.7).toFixed(0) + 'B (vibes)'],
-    ['Intended use', G.webcam ? 'flailing at a webcam' : 'pressing arrow keys'],
+    ['Intended use', autopilot ? 'autopilot (fully unsupervised)' : G.webcam ? 'flailing at a webcam' : 'pressing arrow keys'],
     ['Safety eval', p < 0.2 ? 'passed (we checked)' : p < 0.5 ? 'passed (we skimmed)' : 'skipped (ship date)'],
   ];
   $('res-card').innerHTML = rows.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('');
