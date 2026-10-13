@@ -1,0 +1,301 @@
+{
+  "tex": {
+    "asphalt": {
+      "color": "assets/v2/tex/asphalt/color.jpg",
+      "normal": "assets/v2/tex/asphalt/normal.jpg",
+      "rough": "assets/v2/tex/asphalt/rough.jpg",
+      "ao": "assets/v2/tex/asphalt/ao.jpg",
+      "source": "ambientCG Asphalt025C",
+      "url": "https://ambientcg.com/view?id=Asphalt025C",
+      "resolution": "2K",
+      "tileMeters": 2.0,
+      "tileMetersKnown": false
+    },
+    "sand": {
+      "color": "assets/v2/tex/sand/color.jpg",
+      "normal": "assets/v2/tex/sand/normal.jpg",
+      "rough": "assets/v2/tex/sand/rough.jpg",
+      "ao": "assets/v2/tex/sand/ao.jpg",
+      "source": "ambientCG Ground080",
+      "url": "https://ambientcg.com/view?id=Ground080",
+      "resolution": "1K",
+      "tileMeters": 2.0,
+      "tileMetersKnown": false
+    },
+    "grass": {
+      "color": "assets/v2/tex/grass/color.jpg",
+      "normal": "assets/v2/tex/grass/normal.jpg",
+      "rough": "assets/v2/tex/grass/rough.jpg",
+      "ao": "assets/v2/tex/grass/ao.jpg",
+      "source": "ambientCG Grass004",
+      "url": "https://ambientcg.com/view?id=Grass004",
+      "resolution": "1K",
+      "tileMeters": 1.4,
+      "tileMetersKnown": true
+    },
+    "dirt": {
+      "color": "assets/v2/tex/dirt/color.jpg",
+      "normal": "assets/v2/tex/dirt/normal.jpg",
+      "rough": "assets/v2/tex/dirt/rough.jpg",
+      "ao": "assets/v2/tex/dirt/ao.jpg",
+      "source": "ambientCG Ground102",
+      "url": "https://ambientcg.com/view?id=Ground102",
+      "resolution": "1K",
+      "tileMeters": 2.0,
+      "tileMetersKnown": false
+    },
+    "rock": {
+      "color": "assets/v2/tex/rock/color.jpg",
+      "normal": "assets/v2/tex/rock/normal.jpg",
+      "rough": "assets/v2/tex/rock/rough.jpg",
+      "ao": "assets/v2/tex/rock/ao.jpg",
+      "source": "ambientCG Rock061",
+      "url": "https://ambientcg.com/view?id=Rock061",
+      "resolution": "1K",
+      "tileMeters": 2.0,
+      "tileMetersKnown": false
+    },
+    "paving": {
+      "color": "assets/v2/tex/paving/color.jpg",
+      "normal": "assets/v2/tex/paving/normal.jpg",
+      "rough": "assets/v2/tex/paving/rough.jpg",
+      "ao": "assets/v2/tex/paving/ao.jpg",
+      "source": "ambientCG PavingStones070",
+      "url": "https://ambientcg.com/view?id=PavingStones070",
+      "resolution": "1K",
+      "tileMeters": 1.15,
+      "tileMetersKnown": true
+    },
+    "metalplate": {
+      "color": "assets/v2/tex/metalplate/color.jpg",
+      "normal": "assets/v2/tex/metalplate/normal.jpg",
+      "rough": "assets/v2/tex/metalplate/rough.jpg",
+      "metal": "assets/v2/tex/metalplate/metal.jpg",
+      "source": "ambientCG DiamondPlate001",
+      "url": "https://ambientcg.com/view?id=DiamondPlate001",
+      "resolution": "1K",
+      "tileMeters": 2.0,
+      "tileMetersKnown": false
+    },
+    "concrete": {
+      "color": "assets/v2/tex/concrete/color.jpg",
+      "normal": "assets/v2/tex/concrete/normal.jpg",
+      "rough": "assets/v2/tex/concrete/rough.jpg",
+      "source": "ambientCG Concrete034",
+      "url": "https://ambientcg.com/view?id=Concrete034",
+      "resolution": "1K",
+      "tileMeters": 1.1,
+      "tileMetersKnown": true,
+      "tileMetersY": 0.55,
+      "note": "non-square texture 1024x512 (1.1m x 0.55m)"
+    },
+    "planks": {
+      "color": "assets/v2/tex/planks/color.jpg",
+      "normal": "assets/v2/tex/planks/normal.jpg",
+      "rough": "assets/v2/tex/planks/rough.jpg",
+      "ao": "assets/v2/tex/planks/ao.jpg",
+      "metal": "assets/v2/tex/planks/metal.jpg",
+      "source": "ambientCG Planks023A",
+      "url": "https://ambientcg.com/view?id=Planks023A",
+      "resolution": "1K",
+      "tileMeters": 2.0,
+      "tileMetersKnown": false,
+      "note": "metal map is essentially black (non-metal); can be skipped"
+    },
+    "tiles": {
+      "color": "assets/v2/tex/tiles/color.jpg",
+      "normal": "assets/v2/tex/tiles/normal.jpg",
+      "rough": "assets/v2/tex/tiles/rough.jpg",
+      "source": "ambientCG Tiles040",
+      "url": "https://ambientcg.com/view?id=Tiles040",
+      "resolution": "1K",
+      "tileMeters": 2.0,
+      "tileMetersKnown": false
+    },
+    "paintedmetal": {
+      "color": "assets/v2/tex/paintedmetal/color.jpg",
+      "normal": "assets/v2/tex/paintedmetal/normal.jpg",
+      "rough": "assets/v2/tex/paintedmetal/rough.jpg",
+      "metal": "assets/v2/tex/paintedmetal/metal.jpg",
+      "source": "ambientCG PaintedMetal004",
+      "url": "https://ambientcg.com/view?id=PaintedMetal004",
+      "resolution": "1K",
+      "tileMeters": 2.0,
+      "tileMetersKnown": false
+    },
+    "rubber": {
+      "color": "assets/v2/tex/rubber/color.jpg",
+      "normal": "assets/v2/tex/rubber/normal.jpg",
+      "rough": "assets/v2/tex/rubber/rough.jpg",
+      "source": "ambientCG Rubber004",
+      "url": "https://ambientcg.com/view?id=Rubber004",
+      "resolution": "1K",
+      "tileMeters": 0.75,
+      "tileMetersKnown": true
+    }
+  },
+  "hdri": {
+    "day": {
+      "file": "assets/v2/hdri/day.hdr",
+      "source": "polyhaven kloofendal_48d_partly_cloudy_puresky",
+      "url": "https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky",
+      "resolution": "1k (1024x512)",
+      "sunElevationDeg": 47.9,
+      "keyLightDirThree": [
+        0.554,
+        0.742,
+        0.378
+      ],
+      "peakRadiance": 60450,
+      "note": "sunny partly-cloudy pure sky (no ground geometry), strong sun"
+    },
+    "sunset": {
+      "file": "assets/v2/hdri/sunset.hdr",
+      "source": "polyhaven rogland_sunset",
+      "url": "https://polyhaven.com/a/rogland_sunset",
+      "resolution": "1k (1024x512)",
+      "sunElevationDeg": 12.8,
+      "keyLightDirThree": [
+        0.787,
+        0.222,
+        0.576
+      ],
+      "peakRadiance": 118802,
+      "note": "low sun over arid rocky desert (Namaqualand), clear sky"
+    },
+    "dusk": {
+      "file": "assets/v2/hdri/dusk.hdr",
+      "source": "polyhaven qwantani_dusk_2_puresky",
+      "url": "https://polyhaven.com/a/qwantani_dusk_2_puresky",
+      "resolution": "1k (1024x512)",
+      "sunElevationDeg": 11.3,
+      "keyLightDirThree": [
+        0.791,
+        0.196,
+        0.58
+      ],
+      "peakRadiance": 5.4,
+      "note": "post-sunset purple/pink twilight pure sky; no direct sun, soft glow at horizon"
+    },
+    "night": {
+      "file": "assets/v2/hdri/night.hdr",
+      "source": "polyhaven rogland_clear_night",
+      "url": "https://polyhaven.com/a/rogland_clear_night",
+      "resolution": "1k (1024x512)",
+      "keyLightDirThree": [
+        0.679,
+        0.734,
+        -0.016
+      ],
+      "peakRadiance": 37.2,
+      "note": "clear desert night, milky way/stars; no strong point lights (dim, add your own key light)"
+    },
+    "industrial": {
+      "file": "assets/v2/hdri/industrial.hdr",
+      "source": "polyhaven empty_warehouse_01",
+      "url": "https://polyhaven.com/a/empty_warehouse_01",
+      "resolution": "1k (1024x512)",
+      "keyLightDirThree": [
+        0.261,
+        0.753,
+        -0.604
+      ],
+      "peakRadiance": 400,
+      "note": "indoor warehouse, fluorescent strip lights, concrete floor"
+    },
+    "studio": {
+      "file": "assets/v2/hdri/studio.hdr",
+      "source": "polyhaven studio_small_09",
+      "url": "https://polyhaven.com/a/studio_small_09",
+      "resolution": "1k (1024x512)",
+      "keyLightDirThree": [
+        -0.575,
+        0.249,
+        -0.779
+      ],
+      "peakRadiance": 518,
+      "note": "bright white cyclorama photo studio with softboxes"
+    },
+    "stadium": {
+      "file": "assets/v2/hdri/stadium.hdr",
+      "source": "polyhaven shanghai_bund",
+      "url": "https://polyhaven.com/a/shanghai_bund",
+      "resolution": "1k (1024x512)",
+      "keyLightDirThree": [
+        -0.925,
+        0.182,
+        -0.333
+      ],
+      "peakRadiance": 21602,
+      "note": "no CC0 night stadium exists on Poly Haven; substitute = urban night waterfront with neon skyline (high contrast)"
+    }
+  },
+  "models": {
+    "rock_09": {
+      "file": "assets/v2/models/rock_09/rock_09_1k.gltf",
+      "source": "polyhaven rock_09",
+      "url": "https://polyhaven.com/a/rock_09",
+      "kind": "rock",
+      "triangles": 12416
+    },
+    "namaqualand_boulder_03": {
+      "file": "assets/v2/models/namaqualand_boulder_03/namaqualand_boulder_03_1k.gltf",
+      "source": "polyhaven namaqualand_boulder_03",
+      "url": "https://polyhaven.com/a/namaqualand_boulder_03",
+      "kind": "rock",
+      "triangles": 64826
+    },
+    "namaqualand_boulder_02": {
+      "file": "assets/v2/models/namaqualand_boulder_02/namaqualand_boulder_02_1k.gltf",
+      "source": "polyhaven namaqualand_boulder_02",
+      "url": "https://polyhaven.com/a/namaqualand_boulder_02",
+      "kind": "rock",
+      "triangles": 97964
+    },
+    "shrub_04": {
+      "file": "assets/v2/models/shrub_04/shrub_04_1k.gltf",
+      "source": "polyhaven shrub_04",
+      "url": "https://polyhaven.com/a/shrub_04",
+      "kind": "shrub",
+      "triangles": 27327,
+      "alphaMap": "assets/v2/models/shrub_04/textures/shrub_04_alpha_1k.jpg",
+      "note": "material is alphaMode MASK but baseColor JPG has no alpha: assign alphaMap (and alphaTest 0.5) on load"
+    },
+    "quiver_tree_02": {
+      "file": "assets/v2/models/quiver_tree_02/quiver_tree_02_1k.gltf",
+      "source": "polyhaven quiver_tree_02",
+      "url": "https://polyhaven.com/a/quiver_tree_02",
+      "kind": "tree",
+      "triangles": 82074
+    },
+    "Barrel_01": {
+      "file": "assets/v2/models/Barrel_01/Barrel_01_1k.gltf",
+      "source": "polyhaven Barrel_01",
+      "url": "https://polyhaven.com/a/Barrel_01",
+      "kind": "barrel",
+      "triangles": 2682
+    },
+    "wooden_crate_01": {
+      "file": "assets/v2/models/wooden_crate_01/wooden_crate_01_1k.gltf",
+      "source": "polyhaven wooden_crate_01",
+      "url": "https://polyhaven.com/a/wooden_crate_01",
+      "kind": "crate",
+      "triangles": 6576
+    },
+    "concrete_road_barrier_02": {
+      "file": "assets/v2/models/concrete_road_barrier_02/concrete_road_barrier_02_1k.gltf",
+      "source": "polyhaven concrete_road_barrier_02",
+      "url": "https://polyhaven.com/a/concrete_road_barrier_02",
+      "kind": "road barrier",
+      "triangles": 23822
+    },
+    "old_tyre": {
+      "file": "assets/v2/models/old_tyre/old_tyre_1k.gltf",
+      "source": "polyhaven old_tyre",
+      "url": "https://polyhaven.com/a/old_tyre",
+      "kind": "tyre (track tyre walls)",
+      "triangles": 2880
+    }
+  },
+  "water": "assets/v2/tex/waternormals.jpg"
+}

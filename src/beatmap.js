@@ -4,8 +4,8 @@ import { makeRng, clamp } from './toolkit.js';
 
 export async function loadData() {
   const [bm, sections] = await Promise.all([
-    fetch('assets/beatmap.json').then((r) => r.json()),
-    fetch('assets/sections.json').then((r) => r.json()),
+    fetch(new URL('../assets/beatmap.json', import.meta.url)).then((r) => r.json()),
+    fetch(new URL('../assets/sections.json', import.meta.url)).then((r) => r.json()),
   ]);
   return { bm, sections };
 }

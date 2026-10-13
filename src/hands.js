@@ -32,9 +32,9 @@ export const hands = {
       video.srcObject = stream;
       await video.play();
       this.video = video;
-      const vision = await FilesetResolver.forVisionTasks('./vendor/mediapipe/wasm');
+      const vision = await FilesetResolver.forVisionTasks(new URL('../vendor/mediapipe/wasm', import.meta.url).href);
       const opts = (delegate) => ({
-        baseOptions: { modelAssetPath: './vendor/mediapipe/hand_landmarker.task', delegate },
+        baseOptions: { modelAssetPath: new URL('../vendor/mediapipe/hand_landmarker.task', import.meta.url).href, delegate },
         runningMode: 'VIDEO',
         numHands: 2,
         minHandDetectionConfidence: 0.5,
