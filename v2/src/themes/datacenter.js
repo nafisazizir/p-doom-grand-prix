@@ -9,14 +9,14 @@
 // Every bay is baked once into a handful of merged meshes (see Kit in garage.js), so a 15 m wall of racks is
 // ~6 draw calls.
 import { THREE, glow, G, mesh, textPanel, FONT, roundRect, toon } from '../toolkit.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SPEED } from '../course.js';
-import { Kit, kitProp, canvasTex, cachedGeo, KIT_U } from './garage.js';
+import { Kit, kitProp, canvasTex, cachedGeo, atlasPlane, KIT_U } from './garage.js';
 
 const PI = Math.PI;
 const O3 = [0, 0, 0];
 const BAY_L = 15.2; // bay length along the road (spacing 14 → slight overlap on curves)
 const SP = 14;
-const FORCE = new URLSearchParams(location.search).get('dcforce'); // TEMP debug
 const DC_T0 = 37.57, DC_T1 = 55.77; // section song times (for the singularity progress bar)
 
 const COOL = {
@@ -69,24 +69,47 @@ function flameTex() {
   });
 }
 let _flameMat = null;
+/** additive flame material; each flame flickers independently in the vertex shader (aBase = flame root + phase) */
 function flameMat() {
   if (_flameMat) return _flameMat;
-  _flameMat = new THREE.MeshBasicMaterial({ map: flameTex(), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-  _flameMat.color.setScalar(1.6);
-  return _flameMat;
+  const m = new THREE.MeshBasicMaterial({ map: flameTex(), vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  m.color.setScalar(1.6);
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = PTIME;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec4 aBase;\nuniform float uTime;')
+      .replace('#include <begin_vertex>', `
+        float k = uTime * 13.0 + aBase.w;
+        vec3 sc = vec3(1.0 + 0.1 * sin(k * 1.3), 1.0 + 0.28 * sin(k) + 0.12 * sin(k * 2.7), 1.0 + 0.1 * sin(k * 1.7));
+        vec3 transformed = aBase.xyz + (position - aBase.xyz) * sc;
+        transformed.x += (position.y - aBase.y) * 0.08 * sin(k * 0.7);`);
+  };
+  m.customProgramCacheKey = () => 'dcflame';
+  return (_flameMat = m);
 }
-/** crossed-quad flame (outer + inner tongue), base at y = 0, height ~2.4 */
-function flameGeo() {
-  return cachedGeo('dcFlameGeo', () => {
-    const k = new Kit();
-    for (let i = 0; i < 3; i++) k.add(G.plane(1.9, 3.2), flameMat(), '#ffa040', [0, 1.5, 0], [0, (i * PI) / 3, 0]);
-    for (let i = 0; i < 2; i++) k.add(G.plane(1.0, 1.8), flameMat(), '#ffd070', [0.05, 0.85, 0.05], [0, (i * PI) / 2 + 0.4, 0]);
-    return k.bake()[0].geo;
+/** one mesh holding several flames. spots: [[x, y, z, size], …] */
+function flames(key, spots) {
+  const geo = cachedGeo('flames' + key, () => {
+    const parts = [];
+    spots.forEach(([x, y, z, sz], i) => {
+      const k = new Kit();
+      for (let j = 0; j < 3; j++) k.add(G.plane(1.9, 3.2), 'x', '#ffa040', [0, 1.5, 0], [0, (j * PI) / 3 + i, 0]);
+      for (let j = 0; j < 2; j++) k.add(G.plane(1.0, 1.8), 'x', '#ffd070', [0.05, 0.85, 0.05], [0, (j * PI) / 2 + 0.4 + i, 0]);
+      const g = k.bake()[0].geo;
+      g.scale(sz, sz, sz);
+      g.translate(x, y, z);
+      const n = g.attributes.position.count, base = new Float32Array(n * 4);
+      for (let v = 0; v < n; v++) { base[v * 4] = x; base[v * 4 + 1] = y; base[v * 4 + 2] = z; base[v * 4 + 3] = i * 2.3 + x * 1.7; }
+      g.setAttribute('aBase', new THREE.BufferAttribute(base, 4));
+      for (const a of ['aRM', 'aBlink']) g.deleteAttribute(a);
+      parts.push(g);
+    });
+    const g = mergeGeometries(parts, false);
+    g.computeBoundingSphere();
+    g.boundingSphere.radius += 3;
+    return g;
   });
-}
-function flame(size = 1) {
-  const m = new THREE.Mesh(flameGeo(), flameMat());
-  m.scale.setScalar(size);
+  const m = new THREE.Mesh(geo, flameMat());
   m.renderOrder = 2;
   return m;
 }
@@ -204,12 +227,20 @@ function holoMat(v) {
 function beamMat(color) {
   return cachedGeo('beamMat' + color, () => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
 }
-function wireTex() {
-  return canvasTex('dcWire', 128, 128, (x, W) => {
-    x.clearRect(0, 0, W, W);
-    x.strokeStyle = '#d8d8d0'; x.lineWidth = 5;
-    for (let i = -W; i < W * 2; i += 32) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i + W, W); x.stroke(); x.beginPath(); x.moveTo(i + W, 0); x.lineTo(i, W); x.stroke(); }
-  }, { repeat: true });
+function fenceTex() {
+  // atlas: left = chain-link wire (transparent), right = "SAFETY FENCE (deprecated)" plate
+  return canvasTex('dcFence', 512, 256, (x) => {
+    x.clearRect(0, 0, 512, 256);
+    x.strokeStyle = '#d8d8d0'; x.lineWidth = 4;
+    x.save(); x.beginPath(); x.rect(0, 0, 256, 256); x.clip();
+    for (let i = -256; i < 512; i += 22) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i + 256, 256); x.stroke(); x.beginPath(); x.moveTo(i + 256, 0); x.lineTo(i, 256); x.stroke(); }
+    x.restore();
+    x.fillStyle = '#f2c020'; roundRect(x, 264, 40, 240, 120, 12); x.fill();
+    x.lineWidth = 8; x.strokeStyle = '#1a1a1a'; x.stroke();
+    x.fillStyle = '#1a1a1a'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.font = `700 38px ${FONT}`; x.fillText('SAFETY FENCE', 384, 84);
+    x.font = `700 28px ${FONT}`; x.fillText('(deprecated)', 384, 128);
+  });
 }
 function litPanelMat(tex, opts = {}) {
   return cachedGeo('lpm' + tex.uuid + JSON.stringify(opts), () => new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, metalness: 0.3, alphaTest: 0.5, side: THREE.DoubleSide, ...opts }));
@@ -251,7 +282,7 @@ function cabinet(k, P, cx, w) {
     const a = (b / 5) * PI * 2 + cx;
     k.rbox(0.5, 1.1, 0.06, 0.03, 'chrome', '#9aa8b8', [cx + Math.sin(a) * 0.62, 6.7 + Math.cos(a) * 0.62, -2.88], [0, 0.4, -a]);
   }
-  k.add(G.torus(1.12, 0.05, 28), 'glow', P.ring, [cx, 6.7, -2.83], O3, I3s, 'ring');
+  k.add(G.torus(1.12, 0.05, 28), 'glow', P.ring, [cx, 6.7, -2.83], O3, I3s, 'ledA');
   // status display
   k.box(1.4, 0.5, 0.05, 'glow', P.leds[1], [cx, 3.6, -2.86], O3, 'ledA');
 }
@@ -308,7 +339,8 @@ function fenceRun(k, P, seed) {
     const rot = fallen ? [-1.35, 0, (h - 0.4) * 0.6] : [0, 0, (h - 0.75) * 0.25];
     const y = fallen ? 0.35 : 1.0;
     const z = fallen ? 1.4 : 2.1;
-    k.add(G.plane(seg - 0.2, 1.5), litPanelMat(wireTex()), '#ffffff', [x, y, z], rot);
+    k.add(atlasPlane(seg - 0.2, 1.5, 0, 0, 0.5, 1), litPanelMat(fenceTex()), '#ffffff', [x, y, z], rot);
+    if (!fallen && i % 2 === 0) k.add(atlasPlane(2.2, 1.1, 0.516, 0.375, 0.984, 0.844), litPanelMat(fenceTex()), '#ffffff', [x, y + 0.2, z + 0.06], [0, 0, rot[2] + 0.1]);
     for (let s = 0; s < 4; s++) k.box((seg - 0.2) / 4, 0.2, 0.05, 'paint', s % 2 ? '#111111' : '#f2c020', [x - (seg - 0.2) * 3 / 8 + s * (seg - 0.2) / 4, y + (fallen ? 0 : 0.85), z + 0.04], rot);
   }
 }
@@ -415,7 +447,6 @@ function bay(P, kind) {
   const parts = u.parts;
   if (parts.blades) { parts.blades.position.set(0, 5.6, -3.0); u.blades = parts.blades; u.rgb = parts.rgb; }
   if (parts.liquid) u.liquid = parts.liquid;
-  if (parts.ring) u.ring = parts.ring;
 
   // ---- holograms (screens angled towards the oncoming driver) ----
   if (kind.startsWith('holo')) {
@@ -436,23 +467,21 @@ function bay(P, kind) {
   // ---- fire dressing ----
   if (hot) {
     const spots = {
-      bay: [[-5.2, RACK_TOP, 0, 1.1], [3.0, RACK_TOP, 0.1, 0.8]],
-      bay2: [[1.6, RACK_TOP, 0, 1.2]],
-      fan: [[5.6, 10, -3.5, 1.0], [-1.9, RACK_TOP, 0, 0.9]],
-      tank: [[-5.6, 10, -3.6, 1.0]],
-      holoL: [[5.2, RACK_TOP, 0, 0.9]],
-      holoR: [[-5.2, RACK_TOP, 0, 0.9]],
-      holoL2: [[5.2, RACK_TOP, 0, 0.9]],
-      holoR2: [[-5.2, RACK_TOP, 0, 0.9]],
-      melt: [[-4.6, 4.6, 0.4, 1.4], [0.6, 4.2, 0.5, 1.2], [4.8, 4.8, 0.3, 1.0]],
-      trans: [[0.4, 9.9, -4.0, 1.2], [-5.8, 10, -3.6, 0.8]],
-      ext: [[-5.5, RACK_TOP, 0, 0.9]],
-      fine: [[-5.5, RACK_TOP, 0, 1.2], [5.5, RACK_TOP, 0, 1.3], [0, 0.2, -1.6, 0.9]],
-      dense: [[5.4, RACK_TOP, 0, 1.0]],
+      bay: [[-5.4, RACK_TOP, 0, 1.4], [-1.6, RACK_TOP, -0.1, 0.9], [3.0, RACK_TOP, 0.1, 1.2]],
+      bay2: [[1.6, RACK_TOP, 0, 1.5], [5.8, RACK_TOP, 0, 0.9]],
+      fan: [[5.6, 10, -3.5, 1.2], [-1.9, RACK_TOP, 0, 1.1], [-5.6, 10, -3.6, 0.8]],
+      tank: [[-5.6, 10, -3.6, 1.2], [1.8, RACK_TOP, 0, 0.9]],
+      holoL: [[5.2, RACK_TOP, 0, 1.1]],
+      holoR: [[-5.2, RACK_TOP, 0, 1.1]],
+      holoL2: [[5.2, RACK_TOP, 0, 1.1], [-5.6, RACK_TOP, 0, 0.8]],
+      holoR2: [[-5.2, RACK_TOP, 0, 1.1], [5.6, RACK_TOP, 0, 0.8]],
+      melt: [[-4.6, 4.6, 0.4, 1.6], [-1.2, 4.0, 0.6, 1.0], [1.4, 4.2, 0.5, 1.3], [4.8, 4.8, 0.3, 1.2]],
+      trans: [[0.4, 9.9, -4.0, 1.4], [-5.8, 10, -3.6, 0.9], [5.8, 10, -3.6, 0.9]],
+      ext: [[-5.5, RACK_TOP, 0, 1.1], [5.5, RACK_TOP, 0, 0.8]],
+      fine: [[-5.5, RACK_TOP, 0, 1.4], [5.5, RACK_TOP, 0, 1.5], [0, 0.2, -1.6, 1.0], [-2.6, 0.2, 1.0, 0.6]],
+      dense: [[5.4, RACK_TOP, 0, 1.2], [-5.4, RACK_TOP, 0, 0.9]],
     }[kind] || [];
-    const fl = [];
-    for (const [x, y, z, s] of spots) { const f = flame(s); f.position.set(x, y - 0.1, z); g.add(f); fl.push(f); }
-    u.flames = fl;
+    if (spots.length) g.add(flames('bay' + kind, spots.map(([x, y, z, s]) => [x, y - 0.1, z, s])));
     if (spots.length) g.add(particles('emb' + kind, 'ember', spots.map(([x, y, z, s]) => [x, y + 1.2, z, s * 1.6]), 14));
     if (kind === 'melt' || kind === 'trans' || kind === 'fine' || kind === 'bay') g.add(particles('smk' + kind, 'smoke', spots.map(([x, y, z]) => [x, y + 2.2, z - 0.3, 1.0]), 6));
     if (kind === 'trans') g.add(particles('spk' + kind, 'spark', [[0, 9.4, -2.6, 3], [-0.4, 6.2, -2.6, 3]], 16));
@@ -474,12 +503,6 @@ function bay(P, kind) {
       b.position.set(kind === 'bay' ? 0 : -1.85, RACK_TOP, 0);
       g.add(b);
       u.beacon = b;
-    }
-    if (kind === 'fence' || spec.fence) {
-      const s = textPanel(['SAFETY FENCE', '(deprecated)'], { width: 2.2, height: 0.9, bg: '#f2c020', fg: '#1a1a1a', border: '#1a1a1a', borderW: 8, radius: 8 });
-      s.position.set(-BAY_L / 2 + BAY_L / 8, 1.55, 2.2);
-      s.rotation.z = 0.12;
-      g.add(s);
     }
     if (kind === 'ext') addExtinguisher(g);
     if (kind === 'fine') addThisIsFine(g);
@@ -618,8 +641,7 @@ function gantry(P) {
   });
   if (P.hot) {
     g.add(particles('gspk', 'spark', [[-9.5, 12.0, 0.4, 1.5], [8.8, 12.0, -0.3, 1.5]], 14));
-    const f = flame(0.9); f.position.set(-7.5, 13.3, 0); g.add(f);
-    g.userData.flames = [f];
+    g.add(flames('gantry', [[-7.5, 13.3, 0, 0.9]]));
   }
   return g;
 }
@@ -695,9 +717,7 @@ function bannerFire() {
   p.position.set(0.4, 10.4, 0.1);
   p.rotation.z = -0.07; // hanging askew: one chain melted
   g.add(p);
-  const fl = [];
-  for (const [x, s] of [[-6.4, 1.2], [-1.5, 0.8], [5.2, 1.0]]) { const f = flame(s); f.position.set(x, 12.2 + (x < 0 ? 0.3 : -0.2), 0.2); g.add(f); fl.push(f); }
-  g.userData.flames = fl;
+  g.add(flames('banner', [[-6.4, 12.5, 0.2, 1.2], [-1.5, 12.5, 0.2, 0.8], [5.2, 12.0, 0.2, 1.0]]));
   g.add(particles('bannerEmb', 'ember', [[-6.4, 13, 0.2, 2], [5.2, 12.6, 0.2, 2]], 14));
   return g;
 }
@@ -726,11 +746,11 @@ export function alarmBeacon(color = '#ff2a2a', height = 4.2) {
   const spin = new THREE.Group();
   spin.position.set(0, height + 0.7, 0);
   const bm = glow(color, { transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
-  for (const s of [1, -1]) {
-    const b = mesh(G.cone(0.9, 3.6, 14), bm, s * 1.8, 0, 0);
-    b.rotation.z = (s * PI) / 2;
-    spin.add(b);
-  }
+  spin.add(new THREE.Mesh(cachedGeo('beaconCones', () => {
+    const a = G.cone(0.9, 3.6, 14).clone().rotateZ(PI / 2).translate(1.8, 0, 0);
+    const b = G.cone(0.9, 3.6, 14).clone().rotateZ(-PI / 2).translate(-1.8, 0, 0);
+    return mergeGeometries([a, b], false);
+  }), bm));
   g.add(spin);
   g.userData.spin = spin;
   g.userData.dome = dome;
@@ -751,15 +771,6 @@ function sharedAnimate(obj, kind, t, beatPhase, entry) {
   PTIME.value = t;
   KIT_U.uTime.value = t;
   KIT_U.uBeat.value = beatPhase;
-  if (u.ring) u.ring.visible = Math.sin(t * 2.1 + seed * 9) > -0.6;
-  if (u.flames) {
-    for (let i = 0; i < u.flames.length; i++) {
-      const f = u.flames[i], k = t * 13 + i * 2.3 + seed * 30;
-      const b = f.userData.base || (f.userData.base = f.scale.x);
-      f.scale.set(b * (1 + 0.1 * Math.sin(k * 1.3)), b * (1 + 0.28 * Math.sin(k) + 0.12 * Math.sin(k * 2.7)), b);
-      f.rotation.y = k * 0.05;
-    }
-  }
   if (u.blades) {
     u.blades.rotation.z = -t * (kind === 'fan' && obj.userData.hotFan ? 18 : 6) - seed * 9;
     if (u.rgb) u.rgb.visible = beatPhase < 0.6;
@@ -812,7 +823,6 @@ export default {
   spacing: SP,
   layout(zf, rng, sec) {
     const out = [];
-    if (location.search.includes('noprops')) return out; // TEMP
     const rel = zf - sec.start * SPEED;
     const slot = Math.round(zf / SP);
     // overhead: alternate cable gantries, the progress bar and the stable-run board
@@ -827,7 +837,7 @@ export default {
       else if (r < 0.24) kind = 'tank';
       else if (r < 0.38) kind = (side > 0 ? 'holoR' : 'holoL') + (rng.chance(0.4) ? '2' : '');
       else if (r < 0.7) kind = 'bay2';
-      out.push({ kind: FORCE ? FORCE.replace('#', side > 0 ? 'R' : 'L') : kind, x: side * 12.6, rotY: bayRot(side) });
+      out.push({ kind, x: side * 12.6, rotY: bayRot(side) });
     }
     return out;
   },
@@ -871,7 +881,6 @@ export const datacenterFire = {
   spacing: SP,
   layout(zf, rng, sec) {
     const out = [];
-    if (location.search.includes('noprops')) return out; // TEMP
     const rel = zf - sec.start * SPEED;
     const slot = Math.round(zf / SP);
     const at = (target, p) => { if (rel > target - SP / 2 && rel <= target + SP / 2) { out.push(p); return true; } return false; };
@@ -893,7 +902,7 @@ export const datacenterFire = {
         else if (r < 0.75) kind = 'bay2';
         else kind = 'bay';
       } else gag = true;
-      out.push({ kind: FORCE ? FORCE.replace('#', side > 0 ? 'R' : 'L') : kind, x: side * 12.6, rotY: bayRot(side) });
+      out.push({ kind, x: side * 12.6, rotY: bayRot(side) });
     }
     void gag;
     return out;

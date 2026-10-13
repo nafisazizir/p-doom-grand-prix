@@ -13,10 +13,33 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // shared helpers (also imported by shoggoth.js)
 // =====================================================================================================
 const bakeCache = new Map();
-const _inv = new THREE.Matrix4(), _m = new THREE.Matrix4();
+const classMats = new Map();
+const _inv = new THREE.Matrix4(), _m = new THREE.Matrix4(), _c = new THREE.Color();
+/** materials that differ only by colour share one vertex-coloured material (one draw call) */
+function classKey(m) {
+  if (m.userData.noMerge || m.map || m.transparent || m.vertexColors || m.alphaMap) return 'id:' + m.uuid;
+  if (m.isMeshBasicMaterial) return 'basic|' + m.side;
+  if (m.isMeshStandardMaterial) {
+    const e = m.emissive.getHexString() + ':' + m.emissiveIntensity;
+    return [m.type, m.roughness, m.metalness, m.clearcoat, m.clearcoatRoughness, m.iridescence, e, m.side, m.envMapIntensity].join('|');
+  }
+  return 'id:' + m.uuid;
+}
+function classMat(key, m) {
+  if (key.startsWith('id:')) return m;
+  let cm = classMats.get(key);
+  if (!cm) {
+    cm = m.clone();
+    cm.color = new THREE.Color(1, 1, 1);
+    cm.vertexColors = true;
+    classMats.set(key, cm);
+  }
+  return cm;
+}
 /**
- * Merge every static mesh under `root` that shares a material into one mesh (one draw call per material).
- * Meshes inside a subtree flagged `userData.dyn` (animated parts) and textured meshes (text panels) are kept.
+ * Merge the static meshes under `root` into as few draw calls as possible: meshes whose materials differ only
+ * by colour are merged into one vertex-coloured mesh. Meshes inside a subtree flagged `userData.dyn` (animated
+ * parts), textured meshes (text panels) and `noMerge` materials are left alone.
  * `key` caches the merged geometry per prop kind, so pooled clones share it.
  */
 export function bake(root, key) {
@@ -26,31 +49,39 @@ export function bake(root, key) {
   root.traverse((o) => {
     if (!o.isMesh || o.isInstancedMesh || o.userData.keep || o.material.map) return;
     for (let p = o; p && p !== root; p = p.parent) if (p.userData.dyn) return;
-    const k = o.material.uuid + (o.geometry.index ? 'i' : 'n');
+    const ck = classKey(o.material);
+    const k = ck + (o.geometry.index ? '#i' : '#n');
     let b = buckets.get(k);
-    if (!b) buckets.set(k, (b = []));
-    b.push(o);
+    if (!b) buckets.set(k, (b = { ck, list: [] }));
+    b.list.push(o);
   });
   let n = 0;
-  for (const [, list] of buckets) {
-    const ck = key + '|' + n++;
-    if (list.length < 2) continue;
-    let geo = bakeCache.get(ck);
+  for (const [, { ck, list }] of buckets) {
+    const gk = key + '|' + n++;
+    const byColour = !ck.startsWith('id:');
+    if (list.length < 2 && !byColour) continue;
+    let geo = bakeCache.get(gk);
     if (!geo) {
       const parts = list.map((o) => {
         const gg = o.geometry.clone();
         for (const a of Object.keys(gg.attributes)) if (!['position', 'normal', 'uv'].includes(a)) gg.deleteAttribute(a);
         if (!gg.attributes.uv) gg.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(gg.attributes.position.count * 2), 2));
+        if (byColour) {
+          _c.copy(o.material.color);
+          const cnt = gg.attributes.position.count, arr = new Float32Array(cnt * 3);
+          for (let i = 0; i < cnt; i++) { arr[i * 3] = _c.r; arr[i * 3 + 1] = _c.g; arr[i * 3 + 2] = _c.b; }
+          gg.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+        }
         _m.multiplyMatrices(_inv, o.matrixWorld);
         gg.applyMatrix4(_m);
         return gg;
       });
-      geo = mergeGeometries(parts, false);
+      geo = parts.length === 1 ? parts[0] : mergeGeometries(parts, false);
       if (!geo) continue;
       geo.computeBoundingSphere();
-      bakeCache.set(ck, geo);
+      bakeCache.set(gk, geo);
     }
-    const merged = new THREE.Mesh(geo, list[0].material);
+    const merged = new THREE.Mesh(geo, classMat(ck, list[0].material));
     for (const o of list) o.parent.remove(o);
     root.add(merged);
   }
@@ -113,6 +144,25 @@ export function liftable(inner) {
   inner.userData = {};
   g.userData.lift = inner;
   return g;
+}
+/**
+ * Per-frame housekeeping shared by my themes: hide props further ahead than userData.cull (fog hides them anyway;
+ * saves draw calls) and, once per object, switch off shadow casting for props flagged userData.noShadow
+ * (floating stuff). Returns false when the prop is hidden (skip animating it).
+ */
+export function housekeep(obj, e) {
+  const u = obj.userData;
+  if (u.noShadow && !u.shadowOff) {
+    obj.traverse((o) => { if (o.isMesh) o.castShadow = false; });
+    u.shadowOff = true;
+  }
+  if (u.cull) {
+    const ahead = (e?.zf ?? 0) - (globalThis.GAME?.songTime ?? 0) * SPEED;
+    const vis = ahead < u.cull;
+    if (obj.visible !== vis) obj.visible = vis;
+    return vis;
+  }
+  return true;
 }
 export function applyLift(obj, e) {
   const L = obj.userData.lift;
@@ -270,6 +320,7 @@ function chatBubble(lines, P, { user = false, w = 7, h = 3, avatar = true, d = 0
     const av = new THREE.Group();
     av.position.set(side * (w / 2 + 1.1), -h / 2 - 0.9, 0);
     av.add(mesh(G.sphere(0.75, 20), gloss(user ? P.accent : P.bot)));
+    av.userData.face = true;
     av.add(mesh(G.sphere(0.13, 8), glow('#1a1030', { intensity: 1 }), -0.24, 0.1, 0.68));
     av.add(mesh(G.sphere(0.13, 8), glow('#1a1030', { intensity: 1 }), 0.24, 0.1, 0.68));
     const sm = mesh(G.torus(0.22, 0.05, 12), glow('#1a1030', { intensity: 1 }), 0, -0.12, 0.66);
@@ -278,6 +329,8 @@ function chatBubble(lines, P, { user = false, w = 7, h = 3, avatar = true, d = 0
     inner.add(av);
   }
   bake(inner, 'bub' + w + h + user + P.bubble + avatar);
+  g.userData.noShadow = true;
+  g.userData.cull = 220;
   g.userData.bob = inner;
   g.userData.bobBase = 0;
   g.userData.bobAmp = 0.45;
@@ -517,6 +570,7 @@ function typingBlimp(P, bannerText) {
   g.userData.bob = inner;
   g.userData.bobBase = 0;
   g.userData.bobAmp = 0.8;
+  g.userData.noShadow = true;
   g.userData.dots = dots;
   g.userData.dotZ = frontZ(D) + 0.5;
   g.userData.prop = prop;
@@ -776,6 +830,8 @@ function heartBalloons(n = 5, seed = 0) {
     spin.add(str);
   }
   bake(spin, 'balloons' + n + seed);
+  g.userData.noShadow = true;
+  g.userData.cull = 240;
   g.userData.bob = spin;
   g.userData.bobBase = 0;
   g.userData.bobAmp = 0.7;
@@ -939,6 +995,7 @@ function loveLetter() {
   t.position.set(0, -4.4, 0);
   inner.add(t);
   bake(inner, 'letter');
+  g.userData.noShadow = true;
   g.userData.bob = inner;
   g.userData.bobBase = 0;
   g.userData.bobAmp = 0.6;
@@ -1006,6 +1063,7 @@ function heartAirship(text) {
   inner.add(ban);
   inner.add(mesh(G.cyl(0.04, 0.04, 2.6, 4), toon('#ffffff'), 0, -11.8, 0));
   bake(inner, 'airship');
+  g.userData.noShadow = true;
   g.userData.bob = inner;
   g.userData.bobBase = 0;
   g.userData.bobAmp = 1.2;
@@ -1032,6 +1090,7 @@ function heartEyedBubble(P) {
   t.position.set(0, 4.4, 0);
   inner.add(t);
   bake(inner, 'heartEyed');
+  g.userData.noShadow = true;
   g.userData.bob = inner;
   g.userData.bobBase = 0;
   g.userData.bobAmp = 0.5;
@@ -1045,6 +1104,7 @@ function animate(obj, kind, t, beat, e) {
   const u = obj.userData;
   const s = (e?.seed || 0) * 6.283;
   const kick = Math.pow(1 - beat, 3);
+  if (!housekeep(obj, e)) return;
   if (u.lift) applyLift(obj, e);
   if (u.bob) u.bob.position.y = u.bobBase + Math.sin(t * 1.5 + s) * (u.bobAmp ?? 0.4);
   if (u.jaw) u.jaw.position.y = u.jawBase - Math.pow(beat, 0.6) * u.jawAmp; // opens through the beat, SNAPS shut on it
@@ -1140,7 +1200,7 @@ export default {
     }
     // the skyline
     for (const side of [-1, 1]) {
-      if (rng.chance(0.75)) G0({ kind: 'tower' + rng.int(0, 4), x: side * rng.range(46, 110), rotY: -side * rng.range(0.2, 0.5), scale: rng.range(1.0, 1.6), dz: rng.range(-4, 4) });
+      if (rng.chance(0.4)) G0({ kind: 'tower' + rng.int(0, 4), x: side * rng.range(50, 110), rotY: -side * rng.range(0.2, 0.5), scale: rng.range(1.3, 1.9), dz: rng.range(-4, 4) });
     }
     return out;
   },

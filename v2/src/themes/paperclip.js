@@ -189,7 +189,7 @@ function clipGeo(tubular, radial, r) {
 }
 let _clipHi = null, _clipLo = null;
 const CLIP = () => (_clipHi ||= clipGeo(90, 8, 0.12));
-const CLIP_LO = () => (_clipLo ||= clipGeo(30, 4, 0.13));
+const CLIP_LO = () => (_clipLo ||= clipGeo(22, 3, 0.14));
 
 // ---------- clip mountains (InstancedMesh) ----------
 const TINTS = ['#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ff6fa8', '#6fc2ff', '#ffd24a', '#ffffff', '#9dffb0'].map((c) => new THREE.Color(c));
@@ -217,6 +217,7 @@ function heap(R, Hh, N, seed) {
   inst.instanceMatrix.needsUpdate = true;
   inst.computeBoundingSphere();
   g.add(inst);
+  g.userData.inst = inst;
   return g;
 }
 
@@ -298,7 +299,33 @@ function poolMat() {
   _poolMat.color.multiplyScalar(0.55);
   return _poolMat;
 }
+let _beamTex = null;
+function beamMat(color, k) {
+  _beamTex ||= canvasTex('beam', 8, 128, (g, w, h) => {
+    const gr = g.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  });
+  const m = new THREE.MeshBasicMaterial({ map: _beamTex, color: new THREE.Color(color).multiplyScalar(k), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+  return m;
+}
 let _coneMat = null;
+let _corr = null;
+function corrugated() {
+  if (_corr) return _corr;
+  const tex = canvasTex('corrugated', 256, 64, (g, w, h) => {
+    for (let i = 0; i < 8; i++) {
+      const gr = g.createLinearGradient(i * 32, 0, i * 32 + 32, 0);
+      gr.addColorStop(0, '#59647e'); gr.addColorStop(0.5, '#9aa6c0'); gr.addColorStop(1, '#4a5470');
+      g.fillStyle = gr; g.fillRect(i * 32, 0, 32, h);
+    }
+    g.fillStyle = 'rgba(30,20,10,0.18)'; g.fillRect(0, h - 6, w, 6);
+  });
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(16, 3);
+  _corr = new THREE.MeshStandardMaterial({ map: tex, color: '#8a94b0', roughness: 0.42, metalness: 0.65 });
+  return _corr;
+}
 function lamp(side) {
   // side = +1: lamp on the right, arm reaching left over the road (and vice versa)
   const g = bake('lamp' + side, () => {
@@ -313,8 +340,8 @@ function lamp(side) {
     r.add(mesh(G.box(1.3, 0.08, 0.55), glow(SODIUM, { intensity: 6 }), -side * 4.1, 9.7, 0));
     return r;
   });
-  _coneMat ||= new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffb060').multiplyScalar(0.11), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-  const cone = mesh(G.cone(4.4, 9.6, 24), _coneMat, -side * 4.1, 4.9, 0);
+  _coneMat ||= beamMat('#ffb060', 0.085);
+  const cone = mesh(G.cone(4.2, 9.6, 24), _coneMat, -side * 4.1, 4.9, 0);
   g.add(cone);
   const pool = mesh(G.plane(15, 13), poolMat(), -side * 5.2, 0.06, 0);
   pool.rotation.x = -Math.PI / 2;
@@ -361,9 +388,9 @@ function fuse() {
     return r;
   });
   g.add(stakes);
-  const fresh = mesh(G.cyl(0.11, 0.11, 1, 8), _ropeMat, 0, 0.72, 0);
-  const burnt = mesh(G.cyl(0.1, 0.1, 1, 8), _burntMat, 0, 0.72, 0);
-  const ember = mesh(G.cyl(0.115, 0.115, 1, 8), glow('#ff5a1a', { intensity: 3.5 }), 0, 0.72, 0);
+  const fresh = mesh(G.cyl(0.16, 0.16, 1, 10), _ropeMat, 0, 0.72, 0);
+  const burnt = mesh(G.cyl(0.14, 0.14, 1, 10), _burntMat, 0, 0.72, 0);
+  const ember = mesh(G.cyl(0.165, 0.165, 1, 10), glow('#ff5a1a', { intensity: 3.5 }), 0, 0.72, 0);
   fresh.rotation.x = burnt.rotation.x = ember.rotation.x = Math.PI / 2;
   g.add(fresh, burnt, ember);
   const spark = new THREE.Group();
@@ -419,7 +446,7 @@ function bomb() {
   late.position.set(0, 13.4, 0.5);
   late.visible = false;
   g.add(late);
-  const flash = mesh(G.sphere(6.5, 24), glow('#ff3a1a', { intensity: 2, transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending }), 0, 5, 0);
+  const flash = mesh(G.sphere(6.5, 24), glow('#ff3a1a', { intensity: 1.5, transparent: true, opacity: 0.1, depthWrite: false, blending: THREE.AdditiveBlending }), 0, 5, 0);
   flash.visible = false;
   g.add(flash);
   Object.assign(g.userData, { body, mat, late, flash });
@@ -592,7 +619,7 @@ function stage() {
   bot.add(arm);
   g.add(bot);
   // spotlight beam + floor pool
-  const beam = mesh(G.cone(2.2, 8.6, 28), glow('#fff0c8', { intensity: 0.8, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending }), -0.3, 6.0, 1.2);
+  const beam = mesh(G.cone(2.2, 8.6, 28), beamMat('#fff0c8', 0.22), -0.3, 6.0, 1.2);
   g.add(beam);
   const pool = mesh(G.plane(5, 5), poolMat(), -0.3, 1.33, 0.8);
   pool.rotation.x = -Math.PI / 2;
@@ -730,7 +757,7 @@ function smokeMat() {
 function factory() {
   const g = bake('factory', () => {
     const r = new THREE.Group();
-    const clad = surface('paintedmetal', { tint: '#5a6a92', scale: 0.25, metalness: 0.5, roughness: 0.55 });
+    const clad = corrugated();
     const conc = surface('concrete', { tint: '#8a90a6', scale: 0.3 });
     // main hall with a sawtooth roof
     r.add(mesh(G.box(64, 20, 34), clad, 0, 10, 0));
@@ -758,8 +785,8 @@ function factory() {
     r.add(logo);
     // silos + pipe rack
     for (let i = 0; i < 3; i++) {
-      r.add(mesh(G.cyl(5, 5, 26, 28), MAT.metal('#a8b0c2', { roughness: 0.35 }), -46 - i * 11, 13, -6));
-      r.add(mesh(G.sphere(5, 24), MAT.metal('#a8b0c2', { roughness: 0.35 }), -46 - i * 11, 26, -6));
+      r.add(mesh(G.cyl(5, 5, 26, 28), MAT.metal('#a8b0c2', { roughness: 0.55 }), -46 - i * 11, 13, -6));
+      r.add(mesh(G.sphere(5, 24), MAT.metal('#a8b0c2', { roughness: 0.55 }), -46 - i * 11, 26, -6));
       r.add(mesh(G.cyl(5.1, 5.1, 1.2, 28), MAT.paint('#ff7a2a'), -46 - i * 11, 20, -6));
     }
     const pipe = mesh(G.cyl(0.9, 0.9, 40, 12), MAT.metal('#8a92a8'), -52, 17, 6);
@@ -798,7 +825,7 @@ function coolingTower() {
     for (let i = 0; i <= 16; i++) { const y = (i / 16) * 46; const k = (y - 32) / 32; pts.push(new THREE.Vector2(13 + 9 * k * k * (y < 32 ? 1 : 0.5), y)); }
     geo = new THREE.LatheGeometry(pts, 40);
     r.add(new THREE.Mesh(geo, surface('concrete', { tint: '#9aa0b4', scale: 0.2 })));
-    r.add(mesh(G.box(30, 14, 18), surface('paintedmetal', { tint: '#4a5a86', scale: 0.25 }), 30, 7, 0));
+    r.add(mesh(G.box(30, 14, 18), corrugated(), 30, 7, 0));
     const win = new THREE.Mesh(G.plane(28, 8), windowsMat());
     win.position.set(30, 7, 9.05);
     r.add(win);
@@ -833,7 +860,7 @@ export default {
     sun: { elev: 34, azim: -50, color: '#8fa6ff', intensity: 1.6 },
     nightColors: { top: '#02040e', horizon: '#1b2a5e', nebula: '#2a4cff' },
     fog: { color: '#141d3c', density: 0.0036 },
-    ground: { tex: 'paving', tint: '#4a5276', scale: 4 }, road: { tex: 'metalplate', tint: '#7a8298', scale: 4 },
+    ground: { tex: 'paving', tint: '#353b5a', scale: 4 }, road: { tex: 'metalplate', tint: '#7a8298', scale: 4 },
   },
   palette: {
     skyTop: '#0d0b33', skyBottom: '#3b3d8f', road: '#2e2b52', ground: '#232756', kerb: '#8f9fe0',
@@ -911,8 +938,8 @@ export default {
       case 'clip': return giantClip('chrome');
       case 'clipPink': return giantClip('#ff6fa8');
       case 'clipBlue': return giantClip('#5fb8ff');
-      case 'heapS': return heap(5.5, 4.2, 160, 11);
-      case 'heapL': return heap(16, 13, 620, 23);
+      case 'heapS': return heap(5.5, 4.2, 110, 11);
+      case 'heapL': return heap(16, 13, 400, 23);
       case 'crate': return model('wooden_crate_01', { size: 2.2 });
       case 'barrel': return model('Barrel_01', { size: 1.7 });
       case 'factory': return factory();
@@ -940,7 +967,7 @@ export default {
         u.ember.position.z = -s + emb / 2;
         if (lit) {
           u.spark.position.z = -s;
-          u.flare.scale.setScalar(1.8 + Math.sin(t * 47) * 0.4 + Math.sin(t * 31) * 0.3);
+          u.flare.scale.setScalar(3.2 + Math.sin(t * 47) * 0.6 + Math.sin(t * 31) * 0.4);
           u.flare.material.rotation = t * 3;
           u.bits.forEach((b, i) => {
             const k = (t * 2.8 + i * 0.137) % 1, a = i * 2.4 + Math.floor(t * 2.8 + i * 0.137) * 1.7;
@@ -997,6 +1024,9 @@ export default {
         u.inst.instanceMatrix.needsUpdate = true;
         break;
       }
+      case 'heapS': case 'heapL':
+        u.inst.castShadow = false; // the solid core casts the shadow; thousands of clips don't need to
+        break;
       case 'lampR': case 'lampL': {
         // tilt the light pool with the road's banking
         if (e.bank === undefined) {

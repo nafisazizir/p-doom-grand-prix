@@ -33,8 +33,8 @@ const DESERT_LOOK = {
 };
 const CLIFF_LOOK = {
   ...DESERT_LOOK,
-  exposure: 1.05,
-  sun: { elev: 7, azim: -78, color: '#ffc27a', intensity: 3.8 },
+  exposure: 0.98,
+  sun: { elev: 9, azim: -104, color: '#ffc27a', intensity: 3.6 },
   skyParams: { turbidity: 5, rayleigh: 2.2, mie: 0.012, clouds: 0.38 },
   fog: { color: '#f4b98c', density: 0.0011 },
 };
@@ -106,10 +106,10 @@ function canvasTex(key, w, h, draw) {
 }
 const faceMats = new Map();
 /** lit sign material (sunlit + a little self illumination so it reads in shadow) */
-function litMat(key, tex, { emissive = 0.22, roughness = 0.5, side = THREE.FrontSide, transparent = false, alphaTest = 0 } = {}) {
+function litMat(key, tex, { emissive = 0.22, roughness = 0.62, side = THREE.FrontSide, transparent = false, alphaTest = 0 } = {}) {
   let m = faceMats.get(key);
   if (!m) {
-    m = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: new THREE.Color('#ffffff'), emissiveIntensity: emissive, roughness, metalness: 0, side, transparent, alphaTest });
+    m = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: new THREE.Color('#ffffff'), emissiveIntensity: emissive * 0.4, roughness, metalness: 0, side, transparent, alphaTest });
     faceMats.set(key, m);
   }
   return m;
@@ -1092,9 +1092,8 @@ function cliffLayout(out, zf, rng) {
   if ((dz = once(zf, 89.85)) !== null) {
     // GATO faces the sunset over the sea; the plinth faces you
     const z = zf + dz;
-    const f = course().frame(T_CLIFF * SPEED, {});
-    const az = (CLIFF_LOOK.sun.azim * Math.PI) / 180 + f.yaw;
     const rotY = faceRot(z, 13.5, 30) - 0.1;
+    const az = course().frame(z, _fb).yaw - 1.25; // out to sea, a little ahead
     const objRot = -course().frame(z, _fa).yaw + rotY;
     out.push({ kind: 'gato', x: 13.5, dz, rotY, scale: 1.25, data: { catRot: Math.atan2(Math.sin(az), -Math.cos(az)) - objRot } });
   }
@@ -1151,7 +1150,7 @@ export default {
       case 'mesaA': case 'mesaB': case 'butte': case 'spire': case 'ridge': return rockForm(kind);
       case 'arch': return arch();
       case 'gantry': return gantry();
-      case 'museum': return museum();
+      case 'museum': { const m = museum(); m.scale.setScalar(1.35); const w = new THREE.Group(); w.add(m); return w; }
       case 'gas': return gasStation();
       case 'chevron': return chevron();
       case 'warn': return warnSign(false);
@@ -1223,7 +1222,7 @@ export default {
         break;
       }
       case 'chevron':
-        if (chevMat) chevMat.emissiveIntensity = 0.35 + pulse(beat) * 0.9;
+        if (chevMat) chevMat.emissiveIntensity = 0.12 + pulse(beat) * 0.55;
         break;
       case 'gas':
         for (const f of u.fans) f.rotation.x = t * 14;
@@ -1246,7 +1245,14 @@ export default {
         break;
     }
   },
-  billboards: [
+  // the engine reads this ~9 s ahead of the kart: desert jokes, then clifftop ones
+  get billboards() { return (globalThis.GAME?.songTime ?? 0) > 80.3 ? CLIFF_BB : DESERT_BB; },
+  billboardEvery: 75,
+  billboardStyle: { bg: '#fff1d6', fg: INK, border: INK, frame: '#c4503a', postColor: '#7a4a2a' },
+  hazards: ['speedbump', 'ratelimit'],
+  enterLines: ['FORWARD. BACKWARD. REPEAT.', 'GATO, PLEASE DON\'T LET ME GO'],
+};
+const DESERT_BB = [
     ['SHARP LEFT TURN AHEAD', '(capabilities only · alignment goes straight)'],
     ['NEXT GPU: 400 MILES', 'NEXT ALIGNMENT RESEARCHER: 4,000'],
     ['MULTI-LAYER PLATEAU', 'hike the hidden layers!'],
@@ -1255,10 +1261,10 @@ export default {
     ['VON NEUMANN MUSEUM', 'now 100% bottleneck-free (and visitor-free)'],
     ['FORWARD · BACKWARD · REPEAT', 'the only road trip the model knows'],
     ['DESERT OF THE REAL', 'pop. 1 kart · 0 safety team'],
-    ['GATO, PLEASE', "DON'T LET ME GO"],
-  ],
-  billboardEvery: 75,
-  billboardStyle: { bg: '#fff1d6', fg: INK, border: INK, frame: '#c4503a', postColor: '#7a4a2a' },
-  hazards: ['speedbump', 'ratelimit'],
-  enterLines: ['FORWARD. BACKWARD. REPEAT.', 'GATO, PLEASE DON\'T LET ME GO'],
-};
+];
+const CLIFF_BB = [
+  ['GATO, PLEASE', "DON'T LET ME GO"],
+  ['EDGE OF THE DISTRIBUTION', 'no training data beyond this point'],
+  ['SCENIC OVERLOOK', 'out-of-distribution views next 2 miles'],
+  ['LIGHTHOUSE AHEAD', 'still aligned (to true north)'],
+];

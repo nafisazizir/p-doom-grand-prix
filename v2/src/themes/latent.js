@@ -190,9 +190,10 @@ function constellation(variant) {
 // =====================================================================================================
 function moonMat() {
   return once('moonMat', () => {
-    const m = surface('rock', { tint: '#d9d2ea', scale: 0.07, normalScale: 1.6 }).clone();
-    m.emissive = new THREE.Color('#2a2440');
-    m.emissiveIntensity = 1;
+    const m = surface('rock', { tint: '#f6f0e4', scale: 0.06, normalScale: 1.8 }).clone();
+    m.emissiveMap = m.map;
+    m.emissive = new THREE.Color('#e8e0ff');
+    m.emissiveIntensity = 1.5;
     return m;
   });
 }
@@ -221,7 +222,11 @@ function rocketKit(kt, scale, x, y, z, dir) {
 }
 function moonshot() {
   const root = new THREE.Group();
-  const MC = [10, 95, -40], MR = 52;
+  const MC = [30, 128, -80], MR = 74;
+  const RP = [-16, 100, 2];
+  const RD = [MC[0] - RP[0], MC[1] - RP[1], MC[2] - RP[2]];
+  const RL = Math.hypot(...RD);
+  RD[0] /= RL; RD[1] /= RL; RD[2] /= RL;
   root.add(kit('moon', (kt) => {
     const mm = moonMat();
     kt.add(G.sphere(1, 64), mm, ...MC, 0, 0, 0, MR);
@@ -238,19 +243,19 @@ function moonshot() {
       kt.addM(G.sphere(1, 16), toon('#4a4462', { roughness: 0.95 }), _m4);
     }
     // the NVDA chart: candles climbing from below the road up to the moon
-    const start = [-78, -30, 34], end = [-30, 66, 6];
+    const start = [-92, -46, 52], end = [-26, 88, 8];
     const green = toon(LIME, { emissive: LIME, emissiveIntensity: 0.55, roughness: 0.25 });
     const red = toon('#ff3b5c', { emissive: '#ff3b5c', emissiveIntensity: 0.5, roughness: 0.25 });
     const wick = glow('#e6fff0', { intensity: 1.6 });
-    const n = 16;
+    const n = 18;
     let prevTop = null;
     for (let i = 0; i < n; i++) {
       const u = i / (n - 1);
       const cx = start[0] + (end[0] - start[0]) * u, cz = start[2] + (end[2] - start[2]) * u;
       const cy = start[1] + (end[1] - start[1]) * Math.pow(u, 1.7);
       const dip = i === 4 || i === 9 || i === 12;
-      const h = 4 + u * 10 + (dip ? -1.5 : 0);
-      const w = 2.6 + u * 1.2;
+      const h = 6 + u * 15 + (dip ? -2 : 0);
+      const w = 3.4 + u * 2.2;
       kt.add(G.rbox(1, 1, 1, 0.12), dip ? red : green, cx, cy + h / 2, cz, 0, 0, 0, w, h, w);
       kt.add(G.cyl(1, 1, 1, 6), wick, cx, cy + h / 2, cz, 0, 0, 0, 0.18, h + 4, 0.18);
       const top = [cx, cy + h + 0.6, cz];
@@ -258,22 +263,22 @@ function moonshot() {
       prevTop = top;
     }
     // the rocket at the end of the chart, nosing into the moon
-    rocketKit(kt, 2.2, -22, 74, 2, [0.75, 0.55, -0.35]);
+    rocketKit(kt, 3, RP[0], RP[1], RP[2], RD);
   }));
   // exhaust flame (animated)
   const flame = new THREE.Group();
-  flame.position.set(-22 - 0.75 * 7.5, 74 - 0.55 * 7.5, 2 + 0.35 * 7.5);
-  _d.set(-0.75, -0.55, 0.35).normalize();
+  flame.position.set(RP[0] - RD[0] * 10, RP[1] - RD[1] * 10, RP[2] - RD[2] * 10);
+  _d.set(-RD[0], -RD[1], -RD[2]);
   flame.quaternion.setFromUnitVectors(_up, _d);
-  flame.add(mesh(G.cone(1.6, 7, 14), glow('#ffb84a', { intensity: 2.6 }), 0, 3.5, 0));
-  flame.add(mesh(G.cone(0.9, 4, 12), glow('#fff3c0', { intensity: 3 }), 0, 2, 0));
+  flame.add(mesh(G.cone(2.2, 10, 14), glow('#ffb84a', { intensity: 2.6 }), 0, 5, 0));
+  flame.add(mesh(G.cone(1.2, 6, 12), glow('#fff3c0', { intensity: 3 }), 0, 3, 0));
   root.add(flame);
   const sign = textPanel(['NVDA ▲ +∞%', 'TO THE MOON 🚀'], { width: 30, height: 11, bg: VOID, fg: LIME, border: LIME, borderW: 14, radius: 30 });
-  sign.position.set(-62, 30, 30);
+  sign.position.set(-70, 34, 40);
   sign.rotation.y = 0.25;
   root.add(sign);
   const tick = textPanel('MARKET CAP: YES', { width: 18, height: 3.2, bg: LIME, fg: VOID, border: null, borderW: 0, radius: 18 });
-  tick.position.set(-62, 22.2, 30.4);
+  tick.position.set(-70, 26.2, 40.4);
   tick.rotation.y = 0.25;
   root.add(tick);
   root.userData.flame = flame;
@@ -833,9 +838,9 @@ export default {
     if (at(250)) out.push({ kind: 'gasgiant', x: -240, y: 50, rotY: 0.4 });
     if (at(560)) out.push({ kind: 'gpuplanet', x: 190, y: 20, rotY: -0.3 });
     if (at(110) || at(345)) out.push({ kind: 'omega', x: 0 });
-    if (at(60)) out.push({ kind: 'odometer', x: 22, y: 1, rotY: -0.45, scale: 1.25 });
-    if (at(220)) out.push({ kind: 'odometer', x: -22, y: 3, rotY: 0.45, scale: 1.25 });
-    if (at(440)) out.push({ kind: 'odometer', x: -23, y: 2, rotY: 0.45, scale: 1.25 });
+    if (at(60)) out.push({ kind: 'odometer', x: 31, y: 1, rotY: -0.45, scale: 1.25 });
+    if (at(220)) out.push({ kind: 'odometer', x: -31, y: 3, rotY: 0.45, scale: 1.25 });
+    if (at(440)) out.push({ kind: 'odometer', x: -31, y: 2, rotY: 0.45, scale: 1.25 });
     if (at(140)) out.push({ kind: 'satellite', x: 19, y: 2, rotY: -0.4 });
     if (at(410)) out.push({ kind: 'satellite', x: 20, y: 4, rotY: -0.4 });
     if (at(80) || at(280) || at(520)) out.push({ kind: 'gpusat', x: rel > 250 && rel < 300 ? 20 : -20, y: 3, rotY: rel > 250 && rel < 300 ? -0.4 : 0.4 });

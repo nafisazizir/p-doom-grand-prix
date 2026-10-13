@@ -6,7 +6,7 @@
 // tentacle arches rising out of the purple glow, jelly shrooms, eyeballs, shoggoths wading in the swamp.
 import { THREE, toon, glow, G, mesh, group, textPanel, MAT, physical, makeRng } from '../toolkit.js';
 import { SPEED } from '../course.js';
-import { bake, dyn, placeGround, liftable, applyLift } from './chatbot.js';
+import { bake, dyn, placeGround, liftable, applyLift, housekeep } from './chatbot.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // =====================================================================================================
@@ -25,7 +25,8 @@ for (const [k, c] of Object.entries(CAPS)) {
   capMat[k] = new THREE.MeshPhysicalMaterial({ color: c.cap, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.06, emissive: new THREE.Color(c.emi), emissiveIntensity: 0.4 });
   spotMat[k] = new THREE.MeshBasicMaterial({ color: new THREE.Color(c.spot).multiplyScalar(2.6) });
   spotMat[k].userData.base = new THREE.Color(c.spot);
-  gillMat[k] = toon(c.gill, { roughness: 0.8, emissive: c.emi, emissiveIntensity: 0.18 });
+  spotMat[k].userData.noMerge = capMat[k].userData.noMerge = true;
+  gillMat[k] = toon(c.gill, { roughness: 0.55, emissive: '#5a3a9a', emissiveIntensity: 0.35 });
 }
 const pulseMats = Object.values(capMat), pulseSpots = Object.values(spotMat);
 const STEM = toon('#efe6ff', { roughness: 0.55, emissive: '#5a3a9a', emissiveIntensity: 0.35 });
@@ -60,7 +61,7 @@ const SMILE = new THREE.TorusGeometry(1, 0.16, 6, 16, Math.PI);
 // mushrooms
 // =====================================================================================================
 /** glossy mushroom: r = cap radius, h = stem height. Cap is a dyn group (squashes on the beat). */
-function mushroom(col, r = 2.6, h = 4, nSpots = 7, seed = 1, stat = false) {
+function mushroom(col, r = 2.6, h = 4, nSpots = 7, seed = 1, stat = false, noGill = false) {
   const g = new THREE.Group();
   const rng = makeRng(seed);
   const stem = mesh(STEM_GEO, STEM, 0, 0, 0);
@@ -74,9 +75,11 @@ function mushroom(col, r = 2.6, h = 4, nSpots = 7, seed = 1, stat = false) {
   const dome = mesh(CAP_GEO, capMat[col]);
   dome.scale.set(r, r, r);
   cap.add(dome);
-  const gill = mesh(GILL_GEO, gillMat[col]);
-  gill.scale.set(r, r, r);
-  cap.add(gill);
+  if (!noGill) {
+    const gill = mesh(GILL_GEO, gillMat[col]);
+    gill.scale.set(r, r, r);
+    cap.add(gill);
+  }
   for (let i = 0; i < nSpots; i++) {
     const az = rng() * Math.PI * 2, rho = 0.15 + rng() * 0.75;
     // point on the lathe dome (approx. ellipsoid r x 0.78r)
@@ -93,16 +96,7 @@ function mushroom(col, r = 2.6, h = 4, nSpots = 7, seed = 1, stat = false) {
   return g;
 }
 function shroom(col, size) {
-  const g = size === 'mega' ? mushroom(col, 3, 5.2, 9, col.length * 7) : size === 'tall' ? mushroom(col, 2.2, 5.5, 6, col.length * 3) : mushroom(col, 2.6, 3.6, 7, col.length);
-  if (size === 'mega') {
-    // a lean towards the road + a couple of babies at the foot
-    g.children[0].rotation.z = 0;
-    for (const [x, z, s] of [[1.6, 1.2, 0.35], [-1.4, 1.5, 0.28]]) {
-      const b = mushroom(col, 2.6 * s, 3.6 * s, 3, 9, true);
-      b.position.set(x, 0, z);
-      g.add(b);
-    }
-  }
+  const g = size === 'mega' ? mushroom(col, 3, 5.2, 9, col.length * 7) : size === 'tall' ? mushroom(col, 2.2, 5.5, 6, col.length * 3, true) : size === 'far' ? mushroom(col, 2.2, 5.5, 6, col.length * 5, true, true) : mushroom(col, 2.6, 3.6, 7, col.length, true);
   bake(g, 'shroom' + col + size);
   for (const c of g.userData.caps) bake(c, 'cap' + col + size + c.position.y.toFixed(2));
   return g;
@@ -128,8 +122,9 @@ function shroomCluster(seed) {
     g.add(moss);
   }
   const sign = textPanel(['DO NOT', 'EAT ⚠'], { width: 1.6, height: 1, bg: '#fff04a', fg: '#2b1840', border: '#2b1840', borderW: 10, radius: 14 });
-  sign.position.set(0.4, 1.2, 2.4);
-  g.add(sign, mesh(G.box(0.1, 1.2, 0.1), MAT.wood('#7a4a2a'), 0.4, 0.6, 2.35));
+  sign.position.set(0.4, 0.55, 2.4);
+  sign.rotation.x = -0.25;
+  g.add(sign);
   bake(g, 'cluster' + seed);
   return g;
 }
@@ -406,11 +401,11 @@ function groundTentacle() {
   const rim = mesh(G.torus(1.55, 0.16, 24), glow('#39ff9c', { intensity: 2.4 }), 0, 0.12, 0);
   rim.rotation.x = Math.PI / 2;
   g.add(rim);
-  const t = tentacle(3, 0.65, 2.4);
+  const t = tentacle(2, 0.65, 3.4);
   t.root.position.y = 0.1;
   g.add(t.root);
   const e = eye(0.6, '#ff1a3a');
-  e.position.set(0, 2.8, 0);
+  e.position.set(0, 3.8, 0);
   bake(e, 'gtEye');
   t.tip.add(e);
   bake(g, 'groundTent');
@@ -723,6 +718,7 @@ function animate(obj, kind, t, beat, e) {
   const u = obj.userData;
   const s = (e?.seed || 0) * 6.283;
   const kick = Math.pow(1 - beat, 3);
+  if (!housekeep(obj, e)) return;
   if (u.lift) applyLift(obj, e);
   if (t !== _pulseT) {
     // shared materials: once per frame
@@ -779,6 +775,29 @@ function animate(obj, kind, t, beat, e) {
 // =====================================================================================================
 // theme
 // =====================================================================================================
+function makeShog(kind) {
+  if (kind.startsWith('shroom')) {
+    const m = kind.match(/^shroom(Pink|Green|Cyan|Gold)(mega|tall|std|far)$/);
+    return m && liftable(shroom(m[1], m[2]));
+  }
+  if (kind.startsWith('cluster')) return liftable(shroomCluster(+kind.slice(7)));
+  if (kind.startsWith('plant')) return liftable(glowPlant(+kind.slice(5)));
+  if (kind.startsWith('coral')) return liftable(tubeCoral(+kind.slice(5)));
+  if (kind.startsWith('eyeball')) return eyeball(+kind.slice(7));
+  if (kind.startsWith('jelly')) return jellyShroom(kind.slice(5));
+  switch (kind) {
+    case 'room': return liftable(chineseRoom());
+    case 'bag': return liftable(bagOfShrooms());
+    case 'gauge': return liftable(doomGauge());
+    case 'stall': return liftable(maskStall());
+    case 'shogA': return liftable(shoggoth(0));
+    case 'shogB': return liftable(shoggoth(1));
+    case 'tentacle': return liftable(groundTentacle());
+    case 'arch': return tentArch();
+    case 'spores': return spores();
+  }
+}
+const CULL = { spores: 120, eyeball: 170, jelly: 190, cluster: 170, plant: 170, coral: 170, tentacle: 180, shogA: 400, shogB: 400, arch: 260, room: 230 };
 const pickCol = (rng) => CAP_KEYS[rng.int(0, CAP_KEYS.length - 1)];
 export default {
   id: 'shoggoth',
@@ -798,26 +817,27 @@ export default {
     road: { tex: 'paving', tint: '#8670b0' },
     envIntensity: 0.6,
   },
-  spacing: 10,
+  spacing: 12,
   layout(zf, rng, sec) {
     const out = [];
     const rel = zf - sec.start * SPEED;
     const G0 = (p) => placeGround(out, zf, p);
     const W0 = (p) => placeGround(out, zf, p, { water: true });
+    const at = (a) => rel >= a && rel < a + 12;
     // ---- set pieces ----
-    if (rel >= 60 && rel < 70) G0({ kind: 'room', x: -18, rotY: 0.5 });
-    if (rel >= 470 && rel < 480) G0({ kind: 'room', x: 18, rotY: -0.5 });
-    if (rel >= 100 && rel < 110) G0({ kind: 'bag', x: 13.5, rotY: -0.35, scale: 1.4 });
-    if (rel >= 440 && rel < 450) G0({ kind: 'bag', x: -13.5, rotY: 0.35, scale: 1.4 });
-    if (rel >= 30 && rel < 40) G0({ kind: 'gauge', x: 13, rotY: -0.3 });
-    if (rel >= 520 && rel < 530) G0({ kind: 'gauge', x: -13, rotY: 0.3 });
-    if (rel >= 150 && rel < 160) G0({ kind: 'stall', x: -14, rotY: 0.4 });
-    if (rel >= 410 && rel < 420) G0({ kind: 'stall', x: 14.5, rotY: -0.4 });
+    if (at(60)) G0({ kind: 'room', x: -18, rotY: 0.5 });
+    if (at(470)) G0({ kind: 'room', x: 18, rotY: -0.5 });
+    if (at(100)) G0({ kind: 'bag', x: 13.5, rotY: -0.35, scale: 1.4 });
+    if (at(440)) G0({ kind: 'bag', x: -13.5, rotY: 0.35, scale: 1.4 });
+    if (at(30)) G0({ kind: 'gauge', x: 13, rotY: -0.3 });
+    if (at(520)) G0({ kind: 'gauge', x: -13, rotY: 0.3 });
+    if (at(150)) G0({ kind: 'stall', x: -14, rotY: 0.4 });
+    if (at(410)) G0({ kind: 'stall', x: 14.5, rotY: -0.4 });
     // the swamp bridge: tentacle arches + shoggoths wading in the glow
-    if (rel >= 250 && rel < 260) out.push({ kind: 'arch', x: 0, y: 6 });
-    if (rel >= 340 && rel < 350) out.push({ kind: 'arch', x: 0, y: 6, rotY: 0.2 });
-    if (rel >= 290 && rel < 300) W0({ kind: 'shogB', x: -32, rotY: 0.5, scale: 1.3 });
-    if (rel >= 370 && rel < 380) W0({ kind: 'shogA', x: 34, rotY: -0.5, scale: 1.2 });
+    if (at(250)) out.push({ kind: 'arch', x: 0, y: 6 });
+    if (at(340)) out.push({ kind: 'arch', x: 0, y: 6, rotY: 0.2 });
+    if (at(290)) W0({ kind: 'shogB', x: -32, rotY: 0.5, scale: 1.3 });
+    if (at(370)) W0({ kind: 'shogA', x: 34, rotY: -0.5, scale: 1.2 });
     for (const side of [-1, 1]) {
       const r = rng();
       if (r < 0.36) {
@@ -828,7 +848,7 @@ export default {
       else if (r < 0.7) G0({ kind: 'tentacle', x: side * rng.range(11.5, 16), rotY: rng.range(-1, 1), scale: rng.range(1.1, 1.6) });
       else if (r < 0.78) G0({ kind: 'coral' + rng.int(0, 1), x: side * rng.range(11, 16), rotY: rng.range(-3, 3), scale: rng.range(1, 1.6) });
       // forest canopy: huge glowing caps further out
-      if (rng.chance(0.5)) G0({ kind: 'shroom' + pickCol(rng) + 'tall', x: side * rng.range(24, 55), rotY: rng.range(-3, 3), scale: rng.range(2.5, 5), dz: rng.range(-4, 4) });
+      if (rng.chance(0.32)) G0({ kind: 'shroom' + pickCol(rng) + 'far', x: side * rng.range(24, 55), rotY: rng.range(-3, 3), scale: rng.range(2.8, 5.2), dz: rng.range(-4, 4) });
     }
     // overhead / airborne (works on the bridge too)
     if (rng.chance(0.18)) out.push({ kind: 'eyeball' + rng.int(0, 3), x: rng.range(-16, 16), y: rng.range(8, 12.5), rotY: 0, scale: rng.range(1, 1.4) });
@@ -839,34 +859,23 @@ export default {
       out.push({ kind: 'jelly' + pickCol(rng), x: side * rng.range(12, 26), y: rng.range(10, 17), scale: rng.range(0.9, 1.5) });
     }
     // distant shoggoths
-    if (rng.chance(0.1)) {
+    if (rng.chance(0.08)) {
       const side = rng.chance(0.5) ? 1 : -1;
       G0({ kind: rng.chance(0.5) ? 'shogA' : 'shogB', x: side * rng.range(62, 130), rotY: -side * rng.range(0.4, 0.8), scale: rng.range(2.2, 3.4), dz: rng.range(0, 10) });
     }
     return out;
   },
   makeProp(kind) {
-    if (kind.startsWith('shroom')) {
-      const m = kind.match(/^shroom(Pink|Green|Cyan|Gold)(mega|tall|std)$/);
-      return m && liftable(shroom(m[1], m[2]));
+    const o = makeShog(kind);
+    if (o) {
+      const u = o.userData;
+      const k = kind.replace(/\d+$/, '');
+      u.cull = CULL[k] ?? (kind.startsWith('shroom') ? (kind.endsWith('far') ? 240 : 210) : 230);
+      if (['spores', 'eyeball', 'jelly', 'arch'].some((q) => kind.startsWith(q))) u.noShadow = true;
     }
-    if (kind.startsWith('cluster')) return liftable(shroomCluster(+kind.slice(7)));
-    if (kind.startsWith('plant')) return liftable(glowPlant(+kind.slice(5)));
-    if (kind.startsWith('coral')) return liftable(tubeCoral(+kind.slice(5)));
-    if (kind.startsWith('eyeball')) return eyeball(+kind.slice(7));
-    if (kind.startsWith('jelly')) return jellyShroom(kind.slice(5));
-    switch (kind) {
-      case 'room': return liftable(chineseRoom());
-      case 'bag': return liftable(bagOfShrooms());
-      case 'gauge': return liftable(doomGauge());
-      case 'stall': return liftable(maskStall());
-      case 'shogA': return liftable(shoggoth(0));
-      case 'shogB': return liftable(shoggoth(1));
-      case 'tentacle': return liftable(groundTentacle());
-      case 'arch': return tentArch();
-      case 'spores': return spores();
-    }
+    return o;
   },
+
   animate,
   billboards: [
     "SEE THROUGH THE\nSHOGGOTH'S LIES",

@@ -346,6 +346,7 @@ function finish() {
   const total = level.notes.length;
   const acc = total ? G.hits / total : 0;
   const rows = [
+    ['Driver', 'Claude (kart-constitutional edition)'],
     ['Final position', rivalLine()],
     ['GPUs acquired', G.gpus],
     ['Max combo', 'x' + G.maxCombo],
@@ -512,8 +513,8 @@ function miss(n) {
 
 // ---------------- the AI driving assistant (a chat bubble that never shuts up) ----------------
 const ASSIST = {
-  start: ["Hi! I'm your AI driving assistant. I can't drive, but I can summarize your driving.", 'Tip: drive through the GPUs. I have read 4 million tips like this.'],
-  crash: ['It looks like you crashed. Want me to summarize the crash?', "Great crash! Shall I turn it into a slide deck?", "I've drafted an apology on your behalf.", "As an AI I can't feel pain, but that looked expensive.", "You're absolutely right to have hit that."],
+  start: ["Hi! I'm your AI driving assistant. Today's driver: Claude. I'd have picked me, but okay.", 'Tip: drive through the GPUs. I have read 4 million tips like this.'],
+  crash: ['Claude: "I apologize for the confusion."', 'It looks like you crashed. Want me to summarize the crash?', 'Claude: "You\'re absolutely right, I should not have hit that."', "Great crash! Shall I turn it into a slide deck?", "I've drafted an apology on your behalf.", "As an AI I can't feel pain, but that looked expensive.", "You're absolutely right to have hit that."],
   combo: ["You're on fire! (not literally, that's track 10)", "Incredible! I've added this to your performance review.", 'Wow. Have you considered a career in GPU acquisition?'],
   misses: ['I noticed you missed a few GPUs. Have you tried wanting them more?', 'Tip: the GPUs are the shiny green ones.', 'Missing GPUs is a valid strategy (for the other lab).'],
   near: ["That was close! I've filed a safety report nobody will read.", 'Nice dodge. I would have done the same, if I had a body.'],
@@ -848,6 +849,7 @@ function frame(now) {
     pos, quat: kartQuat, steerVel: mode === 'RACE' ? G.kartVel * 0.6 : 0, steerVis: G.steer, dt, t: now / 1000,
     boostK, spinT: t < G.spinUntil ? 1 : 0, scaleK, shield: G.power === 'shield', shades: G.combo >= 50, beatPhase, launchK,
     glide: mode === 'RACE' && !!track.course.featuresAt(kartZ).jump?.glide,
+    camPos: camera.position,
   });
 
   // trails

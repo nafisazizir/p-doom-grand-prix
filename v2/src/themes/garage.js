@@ -22,9 +22,22 @@ const PBR = {
 const GLOWK = { glow: 2.6, glowHot: 4.0, glowSoft: 1.15 };
 /** shared uniforms for shader-driven LED blinking: update uTime/uBeat from a theme's animate() */
 export const KIT_U = { uTime: { value: 0 }, uBeat: { value: 0 } };
+// crowd bounce: aBlink.x = 3 / 4 → hop on the beat (two groups in counter-phase)
+const BOUNCE = `
+  if (aBlink.x > 2.5) {
+    float bb = sin(uBeat * 3.14159);
+    transformed.y += (aBlink.x < 3.5 ? bb * 0.28 : (1.0 - bb) * 0.22);
+  }`;
+function addBounce(sh) {
+  sh.uniforms.uBeat = KIT_U.uBeat;
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\nattribute vec3 aBlink;\nuniform float uBeat;')
+    .replace('#include <begin_vertex>', '#include <begin_vertex>' + BOUNCE);
+}
 function pbrMaterial(doubleSide) {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 1, side: doubleSide ? THREE.DoubleSide : THREE.FrontSide });
   m.onBeforeCompile = (sh) => {
+    addBounce(sh);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec2 aRM;\nvarying vec2 vRM;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRM = aRM;');
@@ -56,7 +69,7 @@ function glowMaterial() {
 }
 /** shared vertex-coloured materials by kind */
 export function kitMat(kind) {
-  const key = kind in PBR ? (kind === 'leaf' ? 'pbr2' : 'pbr') : kind in GLOWK ? 'glow' : kind;
+  const key = kind in PBR ? 'pbr' : kind in GLOWK ? 'glow' : kind;
   let m = KMATS.get(key);
   if (m) return m;
   if (key === 'pbr') m = pbrMaterial(false);
@@ -91,7 +104,9 @@ export class Kit {
     const isGlow = isStr && mat in GLOWK;
     let blink = 0;
     if (isGlow && (part === 'ledA' || part === 'ledB')) { blink = part === 'ledA' ? 1 : 2; part = ''; }
-    const bucket = isStr ? (mat in PBR ? (mat === 'leaf' ? 'pbr2' : 'pbr') : isGlow ? 'glow' : mat) : mat.uuid;
+    if (part === 'crowdA' || part === 'crowdB') { blink = part === 'crowdA' ? 3 : 4; part = ''; }
+    const leaf = mat === 'leaf';
+    const bucket = isStr ? (mat in PBR ? 'pbr' : isGlow ? 'glow' : mat) : mat.uuid;
     const key = part + '|' + bucket;
     let bk = this.b.get(key);
     if (!bk) this.b.set(key, (bk = { part, mat: isStr ? kitMat(mat) : mat, geos: [] }));
@@ -115,6 +130,17 @@ export class Kit {
     g.setAttribute('aRM', new THREE.BufferAttribute(rm, 2));
     g.setAttribute('aBlink', new THREE.BufferAttribute(bl, 3));
     bk.geos.push(g);
+    if (leaf) {
+      // thin two-sided surface: add a back face (reversed winding, flipped normals) so it shares the single-sided material
+      const b = g.clone();
+      for (const name of ['position', 'normal', 'uv', 'color', 'aRM', 'aBlink']) {
+        const a = b.attributes[name], it = a.itemSize, arr = a.array;
+        for (let t = 0; t < a.count; t += 3) for (let c = 0; c < it; c++) { const i1 = (t + 1) * it + c, i2 = (t + 2) * it + c; const tmp = arr[i1]; arr[i1] = arr[i2]; arr[i2] = tmp; }
+      }
+      const nr = b.attributes.normal.array;
+      for (let i = 0; i < nr.length; i++) nr[i] = -nr[i];
+      bk.geos.push(b);
+    }
     return this;
   }
   box(w, h, d, mat, color, p, r, part) { return this.add(G.box(w, h, d), mat, color, p, r, I3, part); }
@@ -149,10 +175,10 @@ const KCACHE = new Map();
  * Build (once per key) a merged prop; returns a fresh Group of meshes sharing the baked geometry.
  * post(geo, part, material) may post-process each baked geometry once. group.userData.parts[name] = sub-group.
  */
-export function kitProp(key, build, post = null) {
+export function kitProp(key, build, post = null, KitClass = Kit) {
   let baked = KCACHE.get(key);
   if (!baked) {
-    const k = new Kit();
+    const k = new KitClass();
     build(k);
     baked = k.bake();
     if (post) for (const b of baked) post(b.geo, b.part, b.mat);
@@ -276,7 +302,12 @@ function signAtlas() {
 function litMat(tex, opts = {}) {
   const key = 'lit|' + tex.uuid + JSON.stringify(opts);
   let m = KMATS.get(key);
-  if (!m) { m = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, alphaTest: 0.5, side: THREE.DoubleSide, ...opts }); KMATS.set(key, m); }
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, alphaTest: 0.5, side: THREE.DoubleSide, ...opts });
+    m.onBeforeCompile = addBounce;
+    m.customProgramCacheKey = () => 'kitlit';
+    KMATS.set(key, m);
+  }
   return m;
 }
 
@@ -309,12 +340,15 @@ function cardboardPerson(k, p, v, part, { sign = -1, scale = 1 } = {}) {
 }
 // the kit's materials are keyed by part too, so re-route the person's matte/plastic adds into the part
 function personIn(k, p, v, part, opts) {
-  const sub = new Kit();
+  const sub = k.mirror ? new MirrorKit() : new Kit();
   cardboardPerson(sub, p, v, '', opts);
+  const bounce = part === 'crowdA' ? 3 : part === 'crowdB' ? 4 : 0;
+  if (bounce) part = '';
   for (const [key, bk] of sub.b) {
     const nk = part + '|' + key.split('|')[1];
     let dst = k.b.get(nk);
     if (!dst) k.b.set(nk, (dst = { part, mat: bk.mat, geos: [] }));
+    if (bounce) for (const g of bk.geos) { const a = g.attributes.aBlink; for (let i = 0; i < a.count; i++) a.setX(i, bounce); }
     dst.geos.push(...bk.geos);
   }
 }
@@ -360,7 +394,6 @@ function grandstand() {
   const p = textPanel('GO TEAM HUMANITY!  (OR WHOEVER WINS)', { width: 13.5, height: 1.2, bg: INK, fg: SUN, border: null, borderW: 0, radius: 10 });
   p.position.set(0, 5.9, -4.35);
   g.add(p);
-  g.userData.crowd = [g.userData.parts.crowdA, g.userData.parts.crowdB];
   return g;
 }
 
@@ -460,10 +493,16 @@ function tutorialSign() {
   return g;
 }
 
-function house(variant) {
+/** Kit that mirrors everything across x (right-side houses keep their garage on the road side) */
+class MirrorKit extends Kit {
+  constructor() { super(); this.mirror = true; }
+  add(geo, mat, color, p = O3, r = O3, s = I3, part = '') { return super.add(geo, mat, color, [-p[0], p[1], p[2]], [r[0], -r[1], -r[2]], s, part); }
+}
+function house(variant, mirror = false) {
   const founders = variant === 'founders';
   const v = founders ? 0 : variant;
-  const g = kitProp('house' + variant, (k) => {
+  const M = mirror ? -1 : 1;
+  const g = kitProp('house' + variant + (mirror ? 'M' : ''), (k) => {
     const wall = STUCCO[(v * 2 + 1) % STUCCO.length], roof = ROOF[v % ROOF.length];
     const trim = '#ffffff';
     // main house (left) + garage wing (right). front faces +z
@@ -490,7 +529,14 @@ function house(variant) {
     k.sphere(0.08, 8, 'chrome', '#fff', [-0.0, 1.6, -0.27]);
     k.box(2.4, 0.3, 1.6, 'matte', '#cfc8bc', [-0.4, 0.15, 0.2]);
     // garage wing
-    k.box(6, 3.6, 6.4, 'matte', wall, [4.7, 2.2, -3.2]);
+    if (founders) {
+      // hollow garage: side walls, back wall, ceiling (so you can see inside)
+      k.box(0.5, 3.6, 6.4, 'matte', wall, [1.95, 2.2, -3.2]);
+      k.box(0.5, 3.6, 6.4, 'matte', wall, [7.45, 2.2, -3.2]);
+      k.box(6, 3.6, 0.4, 'matte', wall, [4.7, 2.2, -6.2]);
+      k.box(6, 0.4, 6.4, 'matte', wall, [4.7, 3.8, -3.2]);
+      k.box(6, 0.7, 0.4, 'matte', wall, [4.7, 3.45, -0.2]);
+    } else k.box(6, 3.6, 6.4, 'matte', wall, [4.7, 2.2, -3.2]);
     k.add(prismGeo(), 'paint', roof, [4.7, 4.0, -3.2], [0, Math.PI / 2, 0], [7.0, 1.8, 6.6]);
     k.box(6.3, 0.25, 0.3, 'paint', trim, [4.7, 4.0, 0.05]);
     k.box(5.0, 0.2, 0.3, 'paint', trim, [4.7, 3.3, 0.06]);
@@ -498,7 +544,10 @@ function house(variant) {
     k.box(0.25, 3.2, 0.3, 'paint', trim, [7.3, 1.7, 0.06]);
     if (founders) {
       // door rolled up: dark interior, desk, monitors, rack, founders, pizza
-      k.box(5.0, 3.0, 0.1, 'matte', '#141018', [4.7, 1.6, -5.9]);
+      k.box(5.0, 3.0, 0.1, 'matte', '#1a1620', [4.7, 1.9, -5.95]);
+      k.box(0.1, 3.0, 5.6, 'matte', '#2a2430', [2.25, 1.9, -3.1]);
+      k.box(0.1, 3.0, 5.6, 'matte', '#2a2430', [7.15, 1.9, -3.1]);
+      k.box(4.8, 0.1, 5.8, 'matte', '#2a2430', [4.7, 3.55, -3.1]);
       k.box(5.0, 0.6, 0.5, 'paint', '#e9e2d0', [4.7, 3.0, -0.1]); // rolled door
       k.box(4.9, 0.05, 6, 'matte', '#3a3440', [4.7, 0.12, -3]);
       k.box(3.4, 0.14, 1.3, 'wood', '#8a5a3a', [4.7, 1.1, -3.8]);
@@ -528,7 +577,7 @@ function house(variant) {
     k.box(1.4, 0.1, 7, 'matte', '#d8d0c4', [-0.4, 0.05, 3.6]);
     k.rbox(4.2, 1.2, 1.1, 0.4, 'matte', '#3f7a3a', [-4.6, 0.6, 0.8]);
     k.rbox(4.2, 1.0, 0.9, 0.35, 'matte', '#4a8a42', [-4.6, 1.3, 0.8]);
-    if (!founders) k.box(0.07, 1.2, 0.07, 'paint', '#ffffff', [-3.2, 0.5, 2.15]);
+    if (!founders && v % 2 === 0) k.box(0.07, 1.2, 0.07, 'paint', '#ffffff', [-3.2, 0.5, 2.15]);
     // a parked car on the driveway (not in the founders' house: they sold it for GPUs)
     if (!founders) {
       const cc = ['#d8452b', '#2b6ad8', '#f2f2f2', '#2a2a30'][v % 4];
@@ -538,22 +587,22 @@ function house(variant) {
       for (const [wx, wz] of [[-1.05, 2.2], [1.05, 2.2], [-1.05, 5.0], [1.05, 5.0]]) k.cyl(0.42, 0.42, 0.3, 16, 'rubber', '#1a1a1e', [4.7 + wx, 0.45, wz], [0, 0, Math.PI / 2]);
     } else {
       // instead: a pallet of GPU boxes on the driveway
-      for (let i = 0; i < 6; i++) k.rbox(1.1, 0.8, 1.1, 0.05, 'matte', i % 2 ? '#3fa84a' : '#2a8a3a', [4.0 + (i % 3) * 1.15, 0.55 + ((i / 3) | 0) * 0.82, 4.2]);
+      for (let i = 0; i < 6; i++) k.rbox(1.1, 0.8, 1.1, 0.05, 'matte', i % 2 ? '#3fa84a' : '#2a8a3a', [8.6 + ((i / 3) | 0) * 0.3, 0.45 + ((i / 3) | 0) * 0.82, 1.2 + (i % 3) * 1.15]);
     }
-  });
+  }, null, mirror ? MirrorKit : Kit);
   if (founders) {
     const s = textPanel(['HQ', '(do not tell mom)'], { width: 3.4, height: 1.3, bg: '#ffe066', fg: INK, border: INK, borderW: 10, radius: 14 });
-    s.position.set(4.7, 3.65, 0.25);
+    s.position.set(4.7 * M, 3.65, 0.25);
     g.add(s);
     const n = textPanel('AGI: 2 WEEKS', { width: 1.0, height: 0.36, bg: '#ffffff', fg: '#d81e4a', border: null, borderW: 0, radius: 4 });
-    n.position.set(3.0, 2.15, -5.75);
+    n.position.set(3.0 * M, 2.15, -5.75);
     g.add(n);
     g.userData.screens = g.userData.parts.screens;
-  } else {
+  } else if (variant % 2 === 0) {
     const yard = ['THIS HOUSE BELIEVES\nIN SCALING', 'NO SOLICITING\n(except agents)', 'BEWARE OF DOG\n(it is a robot)', 'PROUD PARENT OF\nA 7B MODEL'][variant % 4];
     const s = textPanel(yard.split('\n'), { width: 2.2, height: 1.2, bg: '#ffffff', fg: INK, border: '#2b6ad8', borderW: 10, radius: 10 });
-    s.position.set(-3.2, 1.25, 2.2);
-    s.rotation.y = 0.25;
+    s.position.set(-3.2 * M, 1.25, 2.2);
+    s.rotation.y = 0.25 * M;
     g.add(s);
   }
   return g;
@@ -613,32 +662,39 @@ function mailbox(v) {
     k.box(0.06, 0.6, 0.12, 'paint', '#ff2a2a', [0.34, 1.75, -0.25], [0, 0, 0], 'flag');
     k.box(0.06, 0.24, 0.4, 'paint', '#ff2a2a', [0.34, 2.0, -0.05], [0, 0, 0], 'flag');
   });
-  const lbl = textPanel(['INBOX: 4,000,000', '(ALL AGENTS)'], { width: 1.15, height: 0.45, bg: '#ffffff', fg: INK, border: null, borderW: 0, radius: 6 });
-  lbl.position.set(0, 1.5, 0.57);
-  lbl.rotation.y = 0;
-  g.add(lbl);
+  if (v % 3 === 0) {
+    const lbl = textPanel(['INBOX: 4,000,000', '(ALL AGENTS)'], { width: 1.15, height: 0.45, bg: '#ffffff', fg: INK, border: null, borderW: 0, radius: 6 });
+    lbl.position.set(0, 1.5, 0.57);
+    g.add(lbl);
+  }
   return g;
 }
 
+function streetTex() {
+  return canvasTex('gStreet', 512, 256, (x) => {
+    const blade = (y, t) => {
+      x.fillStyle = '#1f7a3a'; roundRect(x, 6, y, 500, 84, 10); x.fill();
+      x.strokeStyle = '#ffffff'; x.lineWidth = 6; roundRect(x, 14, y + 8, 484, 68, 8); x.stroke();
+      x.fillStyle = '#ffffff'; x.font = `700 54px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(t, 256, y + 44);
+    };
+    blade(4, 'PIVOT AVE');
+    blade(96, 'HYPE ST');
+    x.fillStyle = '#2b1840'; x.font = `700 30px ${FONT}`; x.textAlign = 'center';
+    x.fillText('DEAD', 128, 206); x.fillText('END?', 128, 238);
+  });
+}
 function streetSign() {
-  const g = kitProp('streetSign', (k) => {
+  return kitProp('streetSign', (k) => {
+    const m = litMat(streetTex());
     k.cyl(0.08, 0.08, 4.4, 10, 'metal', '#9aa0aa', [0, 2.2, 0]);
     k.box(2.6, 0.55, 0.06, 'paint', '#1f7a3a', [0, 4.1, 0]);
     k.box(2.6, 0.55, 0.06, 'paint', '#1f7a3a', [0, 3.45, 0], [0, Math.PI / 2, 0]);
+    k.add(atlasPlane(2.5, 0.45, 0, 0.64, 1, 0.98), m, '#ffffff', [0, 4.1, 0.04]);
+    k.add(atlasPlane(2.5, 0.45, 0, 0.29, 1, 0.63), m, '#ffffff', [0.04, 3.45, 0], [0, Math.PI / 2, 0]);
     k.box(0.75, 0.75, 0.06, 'paint', '#ffffff', [0, 2.5, 0.06], [0, 0, Math.PI / 4]);
     k.box(0.68, 0.68, 0.07, 'paint', '#e8b020', [0, 2.5, 0.07], [0, 0, Math.PI / 4]);
+    k.add(atlasPlane(0.62, 0.5, 0.12, 0.02, 0.38, 0.26), m, '#ffffff', [0, 2.5, 0.12]);
   });
-  const a = textPanel('PIVOT AVE', { width: 2.4, height: 0.45, bg: '#1f7a3a', fg: '#ffffff', border: '#ffffff', borderW: 6, radius: 6 });
-  a.position.set(0, 4.1, 0.045);
-  g.add(a);
-  const b = textPanel('HYPE ST', { width: 2.4, height: 0.45, bg: '#1f7a3a', fg: '#ffffff', border: '#ffffff', borderW: 6, radius: 6 });
-  b.position.set(0.045, 3.45, 0);
-  b.rotation.y = Math.PI / 2;
-  g.add(b);
-  const c = textPanel(['DEAD', 'END?'], { width: 0.62, height: 0.5, bg: null, fg: INK, border: null, borderW: 0, pad: 4 });
-  c.position.set(0, 2.5, 0.12);
-  g.add(c);
-  return g;
 }
 
 function vcTruck() {
@@ -845,6 +901,7 @@ function flagPole(c) {
 // theme
 // ================================================================================================
 const HOUSES = ['h0', 'h1', 'h2', 'h3'];
+const HOUSES_M = ['hm0', 'hm1', 'hm2', 'hm3'];
 
 export default {
   id: 'garage',
@@ -863,16 +920,15 @@ export default {
     ground: { tex: 'grass', tint: '#a6d878', scale: 6 }, road: { tex: 'asphalt', tint: '#9a98a8' },
     hills: 1.35,
   },
-  spacing: 12,
+  spacing: 14,
   layout(zf, rng, sec) {
     const out = [];
-    if (location.search.includes('noprops')) return out; // TEMP
     const rel = zf - sec.start * SPEED;
-    const at = (target, p) => { if (rel > target - 6 && rel <= target + 6) out.push({ ...p, dz: target - rel }); };
+    const at = (target, p) => { if (rel > target - 7 && rel <= target + 7) out.push({ ...p, dz: target - rel }); };
     // hero set pieces at exact spots
     at(16, { kind: 'gantry', x: 0, y: 0 });
     at(62, { kind: 'tutorial', x: 0, y: 0 });
-    at(410, { kind: 'holly', x: 180, y: 0, rotY: -0.55, scale: 1.7 });
+    at(640, { kind: 'holly', x: -130, y: 0, rotY: 0.3, scale: 1.3 });
     at(170, { kind: 'blimp', x: -46, y: 34, rotY: 0.5 });
     at(470, { kind: 'tower', x: -58, rotY: 0.3 });
     at(230, { kind: 'founders', x: 27, rotY: -0.42 });
@@ -890,8 +946,8 @@ export default {
     const busy = out.length > 0;
     for (const side of [-1, 1]) {
       // far layer: a street of houses (+ palms between them)
-      if (!(rel > 218 && rel < 242 && side > 0)) out.push({ kind: rng.pick(HOUSES), x: side * rng.range(26, 30), rotY: -side * rng.range(0.3, 0.5) });
-      if (rng.chance(0.55)) out.push({ kind: rng.chance(0.5) ? 'palmT' : 'palmS', x: side * rng.range(19, 22), dz: 6 });
+      if (!(rel > 218 && rel < 242 && side > 0)) out.push({ kind: rng.pick(side > 0 ? HOUSES_M : HOUSES), x: side * rng.range(26, 30), rotY: -side * rng.range(0.3, 0.5) });
+      if (rng.chance(0.45)) out.push({ kind: rng.chance(0.5) ? 'palmT' : 'palmS', x: side * rng.range(19, 22), dz: 7 });
       // near layer
       if (busy) continue;
       const r = rng();
@@ -911,7 +967,8 @@ export default {
       case 'flagpoleA': return flagPole('A');
       case 'flagpoleB': return flagPole('B');
       case 'h0': case 'h1': case 'h2': case 'h3': return house(+kind[1]);
-      case 'founders': return house('founders');
+      case 'founders': return house('founders', true);
+      case 'hm0': case 'hm1': case 'hm2': case 'hm3': return house(+kind[2], true);
       case 'palmT': return palm(true);
       case 'palmS': return palm(false);
       case 'mailbox0': case 'mailbox1': case 'mailbox2': return mailbox(+kind[7]);
@@ -931,11 +988,7 @@ export default {
     KIT_U.uBeat.value = beatPhase;
     const u = obj.userData;
     const seed = entry?.seed || 0;
-    if (u.crowd) {
-      const b = Math.sin(beatPhase * Math.PI);
-      u.crowd[0].position.y = b * 0.28;
-      u.crowd[1].position.y = (1 - b) * 0.22;
-    } else if (u.startLights) {
+    if (u.startLights) {
       const P = u.startLights;
       // red until the race clock passes 0, then green (blinking for a few seconds)
       const go = t >= 0.02;

@@ -5,7 +5,7 @@
 import { THREE, toon, glow, G, mesh, textPanel, makeRng, FONT, MAT, roundRect } from '../toolkit.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { surface } from '../textures.js';
-import { SPEED } from '../course.js';
+import { SPEED, Course } from '../course.js';
 
 const GOLD = '#ffd23f', HOT = '#ff4f8b', NAVY = '#1a1f5e', INK = '#2b1840', CYAN = '#3ff2ff';
 const kick = (bp) => Math.pow(1 - bp, 3);
@@ -103,6 +103,15 @@ function screenMat(tex, k = 1.15) {
   const m = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
   m.color.setScalar(k);
   return m;
+}
+// banked turns: the road edge rises/falls relative to the flat ground; props near the edge follow it
+let COURSE = null;
+const _fr = {};
+/** height of the (banked) road surface at lateral offset lat, relative to the flat ground beside the road */
+function roadRise(zf, lat) {
+  COURSE ||= new Course(SPEED);
+  const f = COURSE.frame(zf, _fr);
+  return f.ry * lat + f.uy * 0 + 0.25;
 }
 function noShadow(obj) {
   obj.traverse((o) => { if (o.isMesh) o.castShadow = false; });
@@ -440,7 +449,14 @@ const SPONSORS = [
 ];
 const HW = 15.5;
 function hoarding(i) {
+  const root = new THREE.Group();
   const g = new THREE.Group();
+  root.add(g);
+  const skirt = mesh(G.box(HW + 0.2, 1, 0.3), MAT.paint('#14163a'), 0, 0, -0.2);
+  skirt.visible = false;
+  root.add(skirt);
+  root.userData.lift = g;
+  root.userData.skirt = skirt;
   g.add(kit('hoard', (kt) => {
     const body = MAT.paint('#14163a'), steel = MAT.plastic('#7a809a');
     kt.add(G.rbox(HW + 0.4, 1.7, 0.5, 0.12), body, 0, 1.15, -0.15);
@@ -460,7 +476,7 @@ function hoarding(i) {
   const face = new THREE.Mesh(G.plane(HW, 1.45), once('hoardMat' + i, () => screenMat(tex, 1.5)));
   face.position.set(0, 1.15, 0.11);
   g.add(face);
-  return g;
+  return root;
 }
 
 // =====================================================================================================
@@ -729,6 +745,53 @@ function podium() {
 }
 
 // =====================================================================================================
+// infield turf: mowing-striped strips laid over the inside of the oval (also hides gaps in the terrain there)
+// =====================================================================================================
+function turfTex() {
+  return once('turf', () => {
+    const t = canvasTex(256, 64, (x) => {
+      for (let i = 0; i < 12; i++) { x.fillStyle = i % 2 ? '#3f9a3a' : '#357f32'; x.fillRect(i * 256 / 12, 0, 256 / 12 + 1, 64); }
+      const r = makeRng(8);
+      for (let i = 0; i < 2500; i++) { x.fillStyle = r.chance(0.5) ? 'rgba(20,60,20,0.25)' : 'rgba(150,220,120,0.18)'; x.fillRect(r.range(0, 256), r.range(0, 64), 1.5, 1.5); }
+      x.fillStyle = 'rgba(255,255,255,0.85)';
+      x.fillRect(0, 0, 3, 64);
+    }, { wrap: true });
+    return t;
+  });
+}
+const TURF_X = -48.5;
+function turf(len = 10.6, off = 0) {
+  const m = once('turfMat', () => new THREE.MeshStandardMaterial({ map: turfTex(), roughness: 0.95, metalness: 0, envMapIntensity: 0.4 }));
+  const g = new THREE.Group();
+  const p = new THREE.Mesh(G.plane(76, len), m);
+  p.rotation.x = -Math.PI / 2;
+  p.position.set(0, 0.06, off);
+  g.add(p);
+  // sloped skirt from the (banked, lowered) inner kerb up to the turf
+  const sm = once('turfSkirt', () => new THREE.MeshStandardMaterial({ color: '#2f7a2c', roughness: 0.95, side: THREE.DoubleSide, envMapIntensity: 0.4 }));
+  const pivot = new THREE.Group();
+  const sk = new THREE.Mesh(G.plane(1, len), sm);
+  sk.rotation.x = -Math.PI / 2;
+  pivot.add(sk);
+  pivot.position.z = off;
+  g.add(pivot);
+  g.userData.skirt = pivot;
+  g.userData.skirtMesh = sk;
+  return g;
+}
+function fitTurfSkirt(obj, zf) {
+  const ud = obj.userData;
+  const ax = -10.4 - TURF_X, ay = roadRise(zf, -10.4) - 0.05;
+  const bx = -16.5 - TURF_X, by = 0.06;
+  if (ay > by - 0.05) { ud.skirt.visible = false; return; }
+  ud.skirt.visible = true;
+  ud.skirt.position.x = (ax + bx) / 2;
+  ud.skirt.position.y = (ay + by) / 2;
+  ud.skirt.rotation.z = Math.atan2(ay - by, ax - bx);
+  ud.skirtMesh.scale.x = Math.hypot(ax - bx, ay - by) + 0.4;
+}
+
+// =====================================================================================================
 // overhead hurdle banner before the hop over the leak pool
 // =====================================================================================================
 function hurdle() {
@@ -759,7 +822,7 @@ export default {
     accent1: GOLD, accent2: HOT,
   },
   look: {
-    sky: 'night', env: 'night', exposure: 1.0, hills: 1.3, envIntensity: 0.6,
+    sky: 'night', env: 'night', exposure: 1.0, hills: 0, envIntensity: 0.6,
     sun: { elev: 58, azim: 25, color: '#f6f2ff', intensity: 2.6 },
     nightColors: { top: '#02030f', horizon: '#1c1a46', nebula: '#3a5cff' },
     fog: { color: '#121230', density: 0.0024 },
@@ -771,6 +834,8 @@ export default {
     const rel = zf - sec.start * SPEED;
     const row = Math.round(rel / 9);
     const at = (a) => rel >= a && rel < a + 9;
+    out.push({ kind: 'turf', x: TURF_X });
+    if (at(330)) out.push({ kind: 'turfLong', x: TURF_X }); // the hop: nothing spawns mid-jump, so pre-lay the turf
     // outer side (right) = grandstands all the way round; distant bowl behind them
     if (row % 4 === 0) out.push({ kind: 'stand' + (row / 4 % 3 | 0), x: 31, rotY: -(Math.PI / 2 - 0.12) });
     if (row % 9 === 0) out.push({ kind: 'bowl', x: 78, rotY: -(Math.PI / 2 - 0.15) });
@@ -780,7 +845,7 @@ export default {
     // floodlight masts
     if (row % 7 === 3) { out.push({ kind: 'mast', x: 46, rotY: -1.1 }); out.push({ kind: 'mast', x: -27, rotY: 1.1 }); }
     // sponsor hoardings hugging the track edge
-    for (const side of [-1, 1]) if ((row + (side > 0 ? 0 : 1)) % 2 === 0) out.push({ kind: 'board' + ((row * 5 + (side > 0 ? 3 : 0)) % SPONSORS.length), x: side * 12.6, rotY: -side * (Math.PI / 2 - 0.22) });
+    for (const side of [-1, 1]) if ((row + (side > 0 ? 0 : 1)) % 2 === 0) out.push({ kind: 'board' + ((row * 5 + (side > 0 ? 3 : 0)) % SPONSORS.length), x: side * 12.6, rotY: -side * (Math.PI / 2 - 0.22), data: side }); // data = side
     // landmarks / gags
     if (at(40) || at(380)) out.push({ kind: 'jumbo', x: -46, rotY: 0.55 });
     if (at(230)) out.push({ kind: 'jumbo', x: -40, rotY: 0.75 });
@@ -805,17 +870,30 @@ export default {
       case 'trophy': return trophy();
       case 'podium': return podium();
       case 'hurdle': return hurdle();
+      case 'turf': return turf();
+      case 'turfLong': return turf(72, -34);
     }
   },
   animate(obj, kind, t, beatPhase, entry) {
     const ud = obj.userData;
     const k = kick(beatPhase);
     const sd = entry ? entry.seed : 0;
-    globalThis.__scn = obj.parent; obj.name = 'stadium:' + kind; // TEMPDEBUG
     if (!ud.init) {
       ud.init = true;
-      if (kind === 'mast' || kind === 'bowl' || kind.startsWith('board') || kind === 'confetti') noShadow(obj);
+      if (kind === 'mast' || kind === 'bowl' || kind.startsWith('board') || kind === 'confetti' || kind.startsWith('turf')) noShadow(obj);
       if (ud.crowd) ud.crowd.castShadow = false;
+    }
+    if (entry && ud.zf !== entry.zf) {
+      // (re)placed from the pool: follow the banking at this spot
+      ud.zf = entry.zf;
+      if (kind.startsWith('turf')) fitTurfSkirt(obj, entry.zf);
+      else if (ud.lift) {
+        const h = Math.max(0, roadRise(entry.zf, (entry.data || 1) * 10.6));
+        ud.lift.position.y = h;
+        ud.skirt.visible = h > 0.3;
+        ud.skirt.scale.y = Math.max(0.01, h + 0.3);
+        ud.skirt.position.y = (h + 0.3) / 2;
+      }
     }
     if (ud.crowd) {
       CROWD_U.uBeat.value = Math.pow(1 - beatPhase, 2);

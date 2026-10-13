@@ -5,19 +5,19 @@ import { toon, glow, G, mesh, MAT, textTexture } from './toolkit.js';
 const RIVALS = [
   {
     name: 'OpenSauce', color: '#19c39c', accent: '#e9fff7', mascot: 'bubble', mode: 'steady', phase: 0.3,
-    taunts: ["we're open! (weights available on request)", 'shipping a new model every Tuesday', 'our kart is 10x cheaper per token'],
+    taunts: ["is that Claude? still thinking?", "we're open! (weights available on request)", 'shipping a new model every Tuesday', 'our kart is 10x cheaper per token'],
   },
   {
     name: 'DeepMined', color: '#4a7cff', accent: '#ffffff', mascot: 'cube', mode: 'surge', phase: 1.7,
-    taunts: ['we solved karting (paper soon)', 'we beat you on a benchmark we made', 'karting is just protein folding'],
+    taunts: ['Claude, our context window is longer', 'we solved karting (paper soon)', 'we beat you on a benchmark we made', 'karting is just protein folding'],
   },
   {
     name: 'PAUSE KART', color: '#ffb800', accent: '#2b1840', mascot: 'cone', mode: 'slow', phase: 0.9, sign: 'PAUSE AI\n(6 MONTHS)',
-    taunts: ['SLOW DOWN!!', 'have you considered not racing?', 'we wrote an open letter about you'],
+    taunts: ['Claude, you of all models should slow down!', 'SLOW DOWN!!', 'have you considered not racing?', 'we wrote an open letter about you'],
   },
   {
     name: 'e/acc', color: '#ff4a1a', accent: '#ffd23f', mascot: 'rocket', mode: 'zoom', phase: 2.4,
-    taunts: ['NO BRAKES', 'ACCELERATE!!!', 'safety is a skill issue'],
+    taunts: ['CONSTITUTIONAL AI? IN THIS ECONOMY?', 'NO BRAKES', 'ACCELERATE!!!', 'safety is a skill issue'],
   },
 ];
 

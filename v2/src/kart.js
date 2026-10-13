@@ -1,4 +1,4 @@
-// v2 hero: "Lil' H-1000" — a premium graphics card with an LCD face, in a glossy helmet, driving a sculpted kart.
+// v2 hero: CLAUDE — a chunky clay-orange spark with a little face, driving a terracotta kart.
 import * as THREE from 'three';
 import { toon, glow, G, mesh, roundRect, clamp, lerp, MAT, physical, textPanel } from './toolkit.js';
 import { glowSprite } from './entities.js';
@@ -38,8 +38,8 @@ export class Kart {
 
   _build() {
     const B = this.body;
-    const paint = MAT.paint('#ff2f6d');
-    const paint2 = MAT.paint('#ffd23f');
+    const paint = MAT.paint('#d97757'); // Claude terracotta
+    const paint2 = MAT.paint('#f3eee3'); // cream
     const carbon = toon('#1a1a20', { roughness: 0.35, metalness: 0.4 });
     const chrome = MAT.chrome();
     // --- chassis
@@ -55,7 +55,7 @@ export class Kart {
       B.add(mesh(G.box(0.05, 0.12, 1.4), paint2, sx * 1.46, 0.48, 0.2));
     }
     // nose number plate
-    const plate = textPanel('H-1000', { width: 0.9, height: 0.32, bg: '#ffffff', fg: '#2b1840', border: '#2b1840', borderW: 6, radius: 10 });
+    const plate = textPanel('CLAUDE', { width: 0.9, height: 0.32, bg: '#f3eee3', fg: '#c15f3c', border: '#2a2725', borderW: 6, radius: 10 });
     plate.position.set(0, 0.55, -1.98);
     plate.rotation.y = Math.PI;
     plate.rotation.x = 0.35;
@@ -76,7 +76,7 @@ export class Kart {
     for (let k = -2; k <= 2; k++) B.add(mesh(G.box(0.05, 0.2, 0.5), carbon, k * 0.3, 0.27, 1.75));
     // rear wing with the H-1000 decal (what the camera sees all race)
     B.add(mesh(G.rbox(2.6, 0.1, 0.62, 0.04), paint, 0, 1.32, 1.62));
-    const wingDecal = textPanel('H-1000', { width: 1.6, height: 0.36, bg: null, fg: '#ffffff', stroke: '#2b1840', strokeW: 10 });
+    const wingDecal = textPanel('CLAUDE', { width: 1.7, height: 0.4, bg: null, fg: '#f3eee3', stroke: '#2a2725', strokeW: 10 });
     wingDecal.position.set(0, 1.42, 1.94);
     B.add(wingDecal);
     B.add(mesh(G.box(2.62, 0.12, 0.04), paint2, 0, 1.27, 1.94));
@@ -95,7 +95,7 @@ export class Kart {
       w.add(t);
       // tread blocks
       for (let k = 0; k < 14; k++) {
-        const tb = mesh(G.box(wd * 0.9, 0.09, 0.16), tyre);
+        const tb = mesh(G.box(wd * 0.92, 0.05, 0.12), tyre);
         const a = (k / 14) * Math.PI * 2;
         tb.position.set(0, Math.cos(a) * r, Math.sin(a) * r);
         tb.rotation.x = -a;
@@ -144,77 +144,65 @@ export class Kart {
     this.wheel.add(mesh(G.box(0.55, 0.06, 0.05), chrome));
     B.add(this.wheel);
 
-    // --- the mascot: an upright premium graphics card
+    // --- the driver: Claude, a chunky clay spark sitting in the cockpit
     const m = new THREE.Group();
     m.position.set(0, 0.62, 0.2);
-    m.scale.setScalar(0.92);
     B.add(m);
     this.mascot = m;
-    const shroud = MAT.paint('#2a2f3a', { metalness: 0.6, roughness: 0.28 });
-    m.add(mesh(G.rbox(1.7, 1.3, 0.5, 0.16), shroud, 0, 0.9, 0));
-    m.add(mesh(G.rbox(1.74, 1.34, 0.08, 0.04), MAT.metal('#c8ccd6'), 0, 0.9, -0.27)); // backplate (front side)
-    m.add(mesh(G.box(1.2, 0.12, 0.42), glow('#ffd23f', { intensity: 1.6 }), 0, 0.22, 0)); // gold fingers belt
-    // RGB strip on top
-    this.rgb = mesh(G.box(1.5, 0.06, 0.06), glow('#5affd0', { intensity: 3 }), 0, 1.57, 0.2);
-    m.add(this.rgb);
-    // LCD face screen (camera side, +z) with a bezel
-    m.add(mesh(G.rbox(1.42, 1.02, 0.06, 0.06), toon('#0b0d12', { roughness: 0.2 }), 0, 0.92, 0.27));
+    const clay = MAT.paint('#d97757', { roughness: 0.62, clearcoat: 0.25, clearcoatRoughness: 0.5, metalness: 0 });
+    const spark = new THREE.Group();
+    spark.position.set(0, 1.55, 0);
+    m.add(spark);
+    this.spark = spark;
+    spark.add(mesh(G.sphere(0.5, 28), clay)); // hub
+    // rounded rays of slightly different lengths, like a hand-drawn spark
+    const lens = [1.0, 0.78, 0.92, 0.7, 0.98, 0.74, 0.9, 0.8, 0.96, 0.72, 0.88, 0.76];
+    this.rays = [];
+    lens.forEach((L, i) => {
+      const a = (i / lens.length) * Math.PI * 2 + 0.13;
+      const ray = new THREE.Group();
+      ray.rotation.z = a;
+      const cap = mesh(G.capsule(0.15, L * 0.75), clay, 0, 0.45 + L * 0.38, 0);
+      cap.scale.z = 1.35;
+      ray.add(cap);
+      spark.add(ray);
+      this.rays.push({ g: ray, cap, L, base: 0.45 + L * 0.38 });
+    });
+    // face (camera side) — canvas with transparent background
     this.faceCanvas = document.createElement('canvas');
-    this.faceCanvas.width = 256; this.faceCanvas.height = 192;
+    this.faceCanvas.width = 256; this.faceCanvas.height = 256;
     this.faceTex = new THREE.CanvasTexture(this.faceCanvas);
     this.faceTex.colorSpace = THREE.SRGBColorSpace;
-    const fm = new THREE.MeshBasicMaterial({ map: this.faceTex });
-    fm.color.setScalar(1.6); // emissive-bright LCD
-    const face = new THREE.Mesh(G.plane(1.3, 0.92), fm);
-    face.position.set(0, 0.92, 0.305);
-    m.add(face);
-    // fans on the other side (forward)
+    const face = new THREE.Mesh(G.plane(0.92, 0.92), new THREE.MeshBasicMaterial({ map: this.faceTex, transparent: true, depthWrite: false }));
+    face.position.set(0, 0, 0.53);
+    face.renderOrder = 2;
+    spark.add(face);
+    // cream racing gloves gripping the wheel
+    for (const sx of [-1, 1]) {
+      const arm = mesh(G.capsule(0.09, 0.6), clay, sx * 0.42, 0.85, -0.3);
+      arm.rotation.set(-1.0, 0, sx * 0.5);
+      m.add(arm);
+      m.add(mesh(G.sphere(0.15, 14), MAT.plastic('#f3eee3'), sx * 0.32, 0.6, -0.62));
+    }
+    // a tiny racing headband with goggles pushed up (Claude takes safety seriously)
+    const band = mesh(G.torus(0.52, 0.06, 28), MAT.plastic('#2a2725'), 0, 0.22, 0);
+    band.rotation.x = Math.PI / 2;
+    spark.add(band);
+    for (const sx of [-0.2, 0.2]) {
+      const gog = mesh(G.torus(0.13, 0.05, 16), MAT.chrome(), sx, 0.42, 0.42);
+      gog.add(mesh(G.cyl(0.11, 0.11, 0.03, 16), MAT.glass('#7fd4ff', { opacity: 0.6 })).rotateX(Math.PI / 2));
+      spark.add(gog);
+    }
+    this.helmet = null;
     this.fans = [];
-    for (const x of [-0.42, 0.42]) {
-      const f = new THREE.Group();
-      f.position.set(x, 0.92, -0.3);
-      f.add(mesh(G.torus(0.3, 0.035, 20), MAT.chrome()));
-      for (let k = 0; k < 7; k++) {
-        const bl = mesh(G.box(0.08, 0.26, 0.02), toon('#20232c', { roughness: 0.4 }));
-        bl.position.set(Math.cos((k / 7) * Math.PI * 2) * 0.14, Math.sin((k / 7) * Math.PI * 2) * 0.14, 0);
-        bl.rotation.z = (k / 7) * Math.PI * 2 + 0.6;
-        f.add(bl);
-      }
-      f.add(mesh(G.cyl(0.08, 0.08, 0.05, 12), glow('#5affd0', { intensity: 2 })).rotateX(Math.PI / 2));
-      m.add(f);
-      this.fans.push(f);
-    }
-    // arms + gloves
-    for (const s of [-1, 1]) {
-      const a = mesh(G.capsule(0.1, 0.55), MAT.plastic('#2a2f3a'), s * 0.62, 0.62, -0.35);
-      a.rotation.set(-1.1, 0, s * 0.35);
-      m.add(a);
-      m.add(mesh(G.sphere(0.15, 14), MAT.plastic('#ffffff'), s * 0.36, 0.48, -0.66));
-    }
-    // too-big glossy helmet
-    const helmet = new THREE.Group();
-    helmet.position.set(0, 1.55, 0);
-    const shell2 = mesh(G.sphere(0.62, 32), MAT.paint('#2fd4ff'), 0, 0.16, 0);
-    shell2.scale.set(1.35, 0.95, 1.15);
-    helmet.add(shell2);
-    helmet.add(mesh(G.box(0.22, 0.62, 1.42), MAT.paint('#ffd23f'), 0, 0.4, 0));
-    const visor = mesh(G.rbox(1.25, 0.32, 0.2, 0.1), MAT.glass('#16243a', { opacity: 0.85 }), 0, 0.12, 0.62);
-    visor.rotation.x = -0.25;
-    helmet.add(visor);
-    helmet.add(mesh(G.rbox(0.1, 0.38, 0.65, 0.04), MAT.paint('#ff2f6d'), 0, 0.82, 0.05));
-    const ring = mesh(G.torus(0.62, 0.05, 32), MAT.chrome(), 0, -0.12, 0);
-    ring.rotation.x = Math.PI / 2;
-    ring.scale.set(1.35, 1.15, 1);
-    helmet.add(ring);
-    m.add(helmet);
-    this.helmet = helmet;
-    // sunglasses (combo ≥ 50): drawn on the LCD + a physical pair
+    this.rgb = null;
+    // sunglasses (combo ≥ 50)
     const shades = new THREE.Group();
-    shades.add(mesh(G.rbox(0.48, 0.26, 0.06, 0.06), MAT.glass('#050505', { opacity: 0.92 }), -0.28, 1.0, 0.35));
-    shades.add(mesh(G.rbox(0.48, 0.26, 0.06, 0.06), MAT.glass('#050505', { opacity: 0.92 }), 0.28, 1.0, 0.35));
-    shades.add(mesh(G.box(0.2, 0.05, 0.05), MAT.chrome(), 0, 1.05, 0.35));
+    shades.add(mesh(G.rbox(0.3, 0.17, 0.05, 0.05), MAT.glass('#050505', { opacity: 0.94 }), -0.17, 0.08, 0.58));
+    shades.add(mesh(G.rbox(0.3, 0.17, 0.05, 0.05), MAT.glass('#050505', { opacity: 0.94 }), 0.17, 0.08, 0.58));
+    shades.add(mesh(G.box(0.12, 0.04, 0.04), MAT.chrome(), 0, 0.12, 0.58));
     shades.visible = false;
-    m.add(shades);
+    spark.add(shades);
     this.shades = shades;
 
     // --- AGI WINGS glider (deploys on glide jumps)
@@ -223,7 +211,7 @@ export class Kart {
     const sc = document.createElement('canvas');
     sc.width = 256; sc.height = 16;
     const sg = sc.getContext('2d');
-    ['#ff2f6d', '#ffffff', '#ffd23f', '#ffffff', '#2fd4ff', '#ffffff', '#ff2f6d', '#ffffff'].forEach((c, i) => { sg.fillStyle = c; sg.fillRect(i * 32, 0, 32, 16); });
+    ['#d97757', '#f3eee3', '#c15f3c', '#f3eee3', '#d97757', '#f3eee3', '#c15f3c', '#f3eee3'].forEach((c, i) => { sg.fillStyle = c; sg.fillRect(i * 32, 0, 32, 16); });
     const stripes = new THREE.CanvasTexture(sc);
     stripes.colorSpace = THREE.SRGBColorSpace;
     const canopyMat = new THREE.MeshStandardMaterial({ map: stripes, roughness: 0.55, side: THREE.DoubleSide });
@@ -232,7 +220,7 @@ export class Kart {
     canopy.rotation.x = -Math.PI / 2; // axis along the kart, arc arching over it
     canopy.position.y = -2.0;
     canopy.scale.set(1, 1.15, 1);
-    const wl = textPanel('AGI WINGS', { width: 3.2, height: 0.7, bg: null, fg: '#ff2f6d', stroke: '#ffffff', strokeW: 10 });
+    const wl = textPanel('AGI WINGS', { width: 3.2, height: 0.7, bg: null, fg: '#c15f3c', stroke: '#ffffff', strokeW: 10 });
     wl.position.set(0, 1.1, 0.95);
     wl.rotation.x = -0.35;
     glider.add(wl);
@@ -260,38 +248,37 @@ export class Kart {
 
   drawFace() {
     const g = this.faceCanvas.getContext('2d');
-    const W = 256, H = 192;
-    const bg = this.expr === 'scared' ? '#2a0610' : this.expr === 'hurt' ? '#1a0a20' : '#03140e';
-    g.fillStyle = bg; g.fillRect(0, 0, W, H);
-    // LCD scanlines
-    g.fillStyle = 'rgba(255,255,255,0.04)';
-    for (let y = 0; y < H; y += 4) g.fillRect(0, y, W, 2);
-    const fg = this.expr === 'scared' ? '#ff5a7a' : this.expr === 'hurt' ? '#ffb02e' : '#5affb0';
-    g.fillStyle = fg; g.strokeStyle = fg; g.lineCap = 'round'; g.lineWidth = 14;
-    g.shadowColor = fg; g.shadowBlur = 14;
-    const ex = [86, 170], ey = 78, e = this.expr;
+    const W = 256, H = 256;
+    g.clearRect(0, 0, W, H);
+    const ink = '#2a2725';
+    g.fillStyle = ink; g.strokeStyle = ink; g.lineCap = 'round'; g.lineJoin = 'round'; g.lineWidth = 13;
+    const ex = [92, 164], ey = 112, e = this.expr;
     if (e === 'hurt') {
-      for (const x of ex) { g.beginPath(); g.moveTo(x - 16, ey - 16); g.lineTo(x + 16, ey + 16); g.moveTo(x + 16, ey - 16); g.lineTo(x - 16, ey + 16); g.stroke(); }
-      g.beginPath(); g.moveTo(92, 142); g.quadraticCurveTo(110, 128, 128, 142); g.quadraticCurveTo(146, 156, 164, 142); g.stroke();
+      for (const x of ex) { g.beginPath(); g.moveTo(x - 15, ey - 15); g.lineTo(x + 15, ey + 15); g.moveTo(x + 15, ey - 15); g.lineTo(x - 15, ey + 15); g.stroke(); }
+      g.beginPath(); g.moveTo(100, 176); g.quadraticCurveTo(114, 164, 128, 176); g.quadraticCurveTo(142, 188, 156, 176); g.stroke();
     } else if (e === 'scared') {
-      for (const x of ex) { g.lineWidth = 9; g.beginPath(); g.arc(x, ey, 22, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.arc(x, ey, 7, 0, Math.PI * 2); g.fill(); }
-      g.beginPath(); g.ellipse(128, 146, 26, 20, 0, 0, Math.PI * 2); g.fill();
-      g.font = 'bold 30px monospace'; g.fillText('P(DOOM)!!', 60, 30);
+      for (const x of ex) { g.fillStyle = '#fff'; g.beginPath(); g.arc(x, ey, 22, 0, Math.PI * 2); g.fill(); g.lineWidth = 6; g.stroke(); g.fillStyle = ink; g.beginPath(); g.arc(x, ey + 3, 8, 0, Math.PI * 2); g.fill(); }
+      g.beginPath(); g.ellipse(128, 182, 20, 16, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#7fd4ff'; g.beginPath(); g.ellipse(206, 70, 10, 16, 0, 0, Math.PI * 2); g.fill();
     } else {
       if (this.blinking) {
-        for (const x of ex) { g.beginPath(); g.moveTo(x - 16, ey); g.lineTo(x + 16, ey); g.stroke(); }
+        for (const x of ex) { g.beginPath(); g.moveTo(x - 14, ey); g.lineTo(x + 14, ey); g.stroke(); }
       } else if (e === 'happy') {
-        for (const x of ex) { g.beginPath(); g.arc(x, ey + 10, 18, Math.PI * 1.1, Math.PI * 1.9); g.stroke(); }
+        for (const x of ex) { g.beginPath(); g.arc(x, ey + 10, 16, Math.PI * 1.15, Math.PI * 1.85); g.stroke(); }
       } else {
-        for (const x of ex) { g.fillRect(x - 12, ey - 20, 24, 40); }
+        for (const x of ex) { g.beginPath(); g.ellipse(x, ey, 11, 17, 0, 0, Math.PI * 2); g.fill(); }
+        g.fillStyle = '#fff';
+        for (const x of ex) { g.beginPath(); g.arc(x + 4, ey - 6, 4, 0, Math.PI * 2); g.fill(); }
+        g.fillStyle = ink;
       }
       if (e === 'happy') {
-        g.beginPath(); g.moveTo(78, 116); g.quadraticCurveTo(128, 186, 178, 116); g.closePath(); g.fill();
+        g.beginPath(); g.moveTo(96, 160); g.quadraticCurveTo(128, 214, 160, 160); g.closePath(); g.fill();
       } else {
-        g.beginPath(); g.arc(128, 108, 36, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke();
+        g.beginPath(); g.arc(128, 150, 26, 0.18 * Math.PI, 0.82 * Math.PI); g.stroke();
       }
+      g.fillStyle = 'rgba(255,140,140,0.55)';
+      g.beginPath(); g.ellipse(58, 160, 16, 10, 0, 0, Math.PI * 2); g.ellipse(198, 160, 16, 10, 0, 0, Math.PI * 2); g.fill();
     }
-    g.shadowBlur = 0;
     this.faceTex.needsUpdate = true;
   }
 
@@ -312,11 +299,19 @@ export class Kart {
     const k = this.scaleK;
     this.root.scale.set(k * (1 + sq), k * (1 - sq), k * (1 + sq));
     this.mascot.position.y = 0.62 + Math.sin(s.t * 9) * 0.03;
-    this.helmet.rotation.z = -this.lean * 1.2;
+    // Claude always turns to look at you (the spark reads best face-on), with a little lean
+    if (s.camPos) {
+      this.spark.lookAt(s.camPos);
+      this.spark.rotateZ(-this.lean * 1.2);
+    }
+    // rays bop on the beat; spin up when boosting
+    const bop = Math.pow(1 - s.beatPhase, 3);
+    for (const r of this.rays) r.cap.position.y = r.base + bop * 0.08 * r.L;
+    this.spinRays = (this.spinRays || 0) + dt * s.boostK * 9;
+    for (let i = 0; i < this.rays.length; i++) this.rays[i].g.rotation.z = (i / this.rays.length) * Math.PI * 2 + 0.13 + this.spinRays;
     this.wheel.rotation.z = -s.steerVis * 1.6;
     for (const w of this.wheels) w.rotation.x -= dt * 26;
     for (const f of this.fans) f.rotation.z += dt * (20 + s.boostK * 40);
-    this.rgb.material.color.setHSL((s.t * 0.3) % 1, 0.9, 0.55).multiplyScalar(3);
     this.flameK = lerp(this.flameK, s.boostK, 1 - Math.exp(-dt * 8));
     const flick = 0.85 + Math.random() * 0.3;
     for (const { f, fb } of this.flames) {

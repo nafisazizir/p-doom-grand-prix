@@ -49,9 +49,9 @@ class Kit {
     _o3.position.set(x, y, z); _o3.rotation.set(rx, ry, rz); _o3.scale.set(sx, sy, sz); _o3.updateMatrix();
     return this.addM(geo, mat, _o3.matrix);
   }
-  addM(geo, mat, m) {
-    const key = vcKey(mat);
-    const color = key ? mat.color : null;
+  addM(geo, mat, m, tint = null) {
+    const key = tint ? null : vcKey(mat);
+    const color = tint || (key ? mat.color : null);
     if (key) mat = vcMat(key);
     const g = prepGeo(geo);
     g.applyMatrix4(m);
@@ -159,9 +159,9 @@ function beacon() {
   g.add(dome);
   const spin = new THREE.Group();
   spin.position.set(0, 4.75, 0);
-  const bm = additive('#ff4a3a', 0.16);
+  const bm = additive('#ff4a3a', 0.07);
   for (const s of [1, -1]) {
-    const b = mesh(G.cone(0.7, 3.2, 14, 1), bm, s * 1.6, 0, 0);
+    const b = mesh(G.cone(0.55, 2.4, 14, 1), bm, s * 1.2, 0, 0);
     b.rotation.z = s * Math.PI / 2;
     spin.add(b);
   }
@@ -192,14 +192,16 @@ function rocketBody(kt, color) {
   }
   kt.add(G.cyl(0.5, 0.5, 0.1, 16), glow('#7af7ff', { intensity: 2 }), 0, 17.6, R * 0.85, Math.PI / 2);
 }
+const smokeMat = () => once('smokeMat', () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, emissive: new THREE.Color('#6a4646'), emissiveIntensity: 0.55 }));
 function smokeKit(kt, seed, scale, warm) {
   const r = makeRng(seed);
-  const top = MAT.matte('#e2d8d4'), mid = MAT.matte('#b9aaa8'), lit = MAT.matte(warm ? '#ffb08a' : '#d0c8c8');
-  for (let i = 0; i < 14; i++) {
-    const a = r.range(0, TAU), d = r.range(0, 1) * 3.6 * scale;
-    const s = r.range(1.6, 3.2) * scale * (1 - d / (6 * scale));
-    const y = s * 0.7 + r.range(0, 1.6) * scale;
-    kt.add(G.icosa(1, 1), y > 3 * scale ? top : i % 3 ? mid : lit, Math.cos(a) * d, y, Math.sin(a) * d, r() * 3, r() * 3, 0, s, s * 0.85, s);
+  const top = new THREE.Color('#fbf4f0'), mid = new THREE.Color('#ddd0ce'), lit = new THREE.Color(warm ? '#ffc0a0' : '#e8e0e0');
+  for (let i = 0; i < 18; i++) {
+    const a = r.range(0, TAU), d = Math.sqrt(r()) * 4.2 * scale;
+    const s = r.range(1.3, 2.8) * scale * (1.15 - d / (6 * scale));
+    const y = s * 0.55 + r.range(0, 2.4) * scale * (1 - d / (5 * scale));
+    _o3.position.set(Math.cos(a) * d, y, Math.sin(a) * d); _o3.rotation.set(0, r() * 3, 0); _o3.scale.set(s, s * 0.8, s); _o3.updateMatrix();
+    kt.addM(G.sphere(1, 14), smokeMat(), _o3.matrix, y > 2.6 * scale ? top : i % 3 ? mid : lit);
   }
 }
 function gantry(color) {
@@ -806,10 +808,10 @@ export default {
     accent1: RED, accent2: YEL,
   },
   look: {
-    sky: 'dusk', env: 'dusk', exposure: 0.88, hills: 1.5,
-    sun: { elev: 4, azim: 8, color: '#ff8a50', intensity: 3.4 },
-    skyParams: { turbidity: 6, rayleigh: 3.4, mie: 0.02, clouds: 0.45 },
-    fog: { color: '#8a4a58', density: 0.0013 },
+    sky: 'dusk', env: 'dusk', exposure: 0.8, hills: 1.5,
+    sun: { elev: 5, azim: 24, color: '#ff8a50', intensity: 3.4 },
+    skyParams: { turbidity: 6, rayleigh: 3.2, mie: 0.009, clouds: 0.45 },
+    fog: { color: '#7a4050', density: 0.0012 },
     ground: { tex: 'dirt', tint: '#6a4a46', scale: 7 }, road: { tex: 'metalplate', tint: '#8a8a98' },
   },
   spacing: 10,
@@ -834,15 +836,15 @@ export default {
       if (at(130)) out.push({ kind: 'chart', x: 16, rotY: -0.45 });
       if (at(200)) out.push({ kind: 'pause', x: -13.5, rotY: 0.6 });
       // ramp base: smoke everywhere
-      if (rel < 140 && rng.chance(0.55)) out.push({ kind: 'smoke' + rng.int(0, 2), x: (rng.chance(0.5) ? 1 : -1) * rng.range(15, 42), rotY: rng.range(0, 6) });
-      else if (rng.chance(0.18)) out.push({ kind: 'smoke' + rng.int(0, 2), x: (rng.chance(0.5) ? 1 : -1) * rng.range(30, 60), rotY: rng.range(0, 6) });
+      if (rel < 150 && rng.chance(0.5)) out.push({ kind: 'smoke' + rng.int(0, 2), x: (rng.chance(0.5) ? 1 : -1) * rng.range(21, 48), rotY: rng.range(0, 6) });
+      else if (rng.chance(0.16)) out.push({ kind: 'smoke' + rng.int(0, 2), x: (rng.chance(0.5) ? 1 : -1) * rng.range(32, 70), rotY: rng.range(0, 6), scale: 1.6 });
       if (rng.chance(0.3)) { const s = rng.chance(0.5) ? 1 : -1; out.push({ kind: 'tower', x: s * rng.range(18, 24), rotY: s > 0 ? 0 : Math.PI }); }
       if (Math.round(rel / 10) % 2 === 0) { const s = Math.round(rel / 20) % 2 ? 1 : -1; out.push({ kind: 'beacon', x: s * 10.9 }); }
     } else {
       // space: hoops along the ramp, the Dyson sphere ahead, a floating scoreboard, an escape pod
       if (Math.round(rel / 10) % 4 === 0) out.push({ kind: 'hoop' + (Math.round(rel / 40) % 2), x: 0 });
       if (at(470)) out.push({ kind: 'scoreboard', x: 0, y: 0 });
-      if (at(600)) out.push({ kind: 'dyson', x: 0, y: 95, scale: 1.4 });
+      if (at(700)) out.push({ kind: 'dyson', x: 10, y: 70, scale: 1.4 });
       if (at(400)) out.push({ kind: 'pod', x: -22, y: 6, rotY: 0.4 });
       if (at(520)) out.push({ kind: 'launchFar', x: 60, y: -120 });
     }

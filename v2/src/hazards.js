@@ -56,7 +56,7 @@ export const HAZARDS = {
       for (let i = 0; i < 3; i++) g.add(mesh(G.sphere(0.09, 8), glow(['#ff5f57', '#febc2e', '#28c840'][i]), -BASE / 2 + 0.25 + i * 0.25, 2.4, 0.17));
       return g;
     },
-    lines: ["YOU'RE ABSOLUTELY RIGHT!", 'GREAT QUESTION!'],
+    lines: ["YOU'RE ABSOLUTELY RIGHT!", 'CLAUDE, IS THAT YOU?', 'GREAT QUESTION!'],
     hit: (g) => g.fx.splat(),
   },
   leak: {
