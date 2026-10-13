@@ -131,13 +131,15 @@ export class Rivals {
       r.off = off;
       const s = kartZ + off;
       const feats = this.track.course.featuresAt(s);
-      const show = visible && t > 1 && !feats.jump && Math.abs(off) < 260 && !(playerFeatures.jump);
+      // never between the camera and the player: rivals only exist from just behind your rear wheels forwards
+      const show = visible && t > 1 && !feats.jump && off > -1.5 && off < 260 && !(playerFeatures.jump);
       r.obj.visible = show;
       if (!show) { if (r.bubble) r.bubble.visible = false; continue; }
       if (off > 0) ahead++;
       // lane: wander, but keep clear of the player when alongside
       let target = Math.sin(t * 0.37 + r.def.phase * 3) * 0.75;
-      if (Math.abs(off) < 7) target = kartX > 0 ? Math.min(target, kartX - 0.75) : Math.max(target, kartX + 0.75);
+      // alongside or just ahead: take the far side of the road so you can see them (and they don't block GPUs)
+      if (off < 14) target = kartX > 0 ? Math.min(target, kartX - 0.95, -0.55) : Math.max(target, kartX + 0.95, 0.55);
       target = Math.max(-0.9, Math.min(0.9, target));
       r.x += (target - r.x) * (1 - Math.exp(-dt * 2.5));
       const pos = this.track.worldPos(s, r.x, 0, r.obj.position);

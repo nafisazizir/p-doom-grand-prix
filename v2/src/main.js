@@ -99,6 +99,7 @@ async function boot() {
   track = new Track(scene, sections, R);
   kart = new Kart(scene);
   rivals = new Rivals(scene, track);
+  globalThis.__dbg = { get camera() { return camera; }, get kart() { return kart; }, get track() { return track; }, CAM };
   particles = new Particles(scene);
   smoke = new Smoke(scene);
   level = v2Level(buildLevel(bm, structuredClone(sections), THEMES));
@@ -910,6 +911,12 @@ function beatPhaseAt(t) {
   return clamp((t - b0) / (b1 - b0), 0, 1);
 }
 
+// chase camera rig (tunable for experiments: ?cam=back,height,ahead,aheadH,fov,latFollow)
+const CAM = { back: 9.8, height: 4.6, ahead: 28, aheadH: 3, fov: 60, lat: 0.75 };
+if (params.get('cam')) {
+  const v = params.get('cam').split(',').map(Number);
+  ['back', 'height', 'ahead', 'aheadH', 'fov', 'lat'].forEach((k, i) => { if (!isNaN(v[i])) CAM[k] = v[i]; });
+}
 const camTarget = new THREE.Vector3();
 const camPosT = new THREE.Vector3();
 const camUp = new THREE.Vector3();
@@ -924,11 +931,11 @@ function updateCamera(dt, kartZ, t, boostK, now) {
     camera.updateProjectionMatrix();
     return;
   }
-  const back = THREE.MathUtils.lerp(8.5, 10.5, boostK);
-  const height = THREE.MathUtils.lerp(3.6, 3.0, boostK);
+  const back = CAM.back + 2 * boostK;
+  const height = CAM.height - 0.6 * boostK;
   const f = track.course.frame(kartZ - back, camFr);
   // camera sits behind, following the kart laterally with a little lag; up is half road-normal, half world-up
-  const latTarget = G.kartX * LANE * 0.7;
+  const latTarget = G.kartX * LANE * CAM.lat;
   camState.x = THREE.MathUtils.lerp(camState.x, latTarget, 1 - Math.exp(-dt * 6));
   camUp.set(f.ux * 0.4, f.uy * 0.4 + 0.6, f.uz * 0.4).normalize();
   camPosT.set(f.x + f.rx * camState.x, f.y + f.ry * camState.x, f.z + f.rz * camState.x).addScaledVector(camUp, height + track.course.hopAt(kartZ) * 0.8);
@@ -939,14 +946,14 @@ function updateCamera(dt, kartZ, t, boostK, now) {
   const sh = camState.shake;
   camera.position.x += (Math.random() - 0.5) * sh * 0.6;
   camera.position.y += (Math.random() - 0.5) * sh * 0.4;
-  track.worldPos(kartZ + 16, G.kartX * 0.5, 1.4, camTarget);
+  track.worldPos(kartZ + CAM.ahead, G.kartX * 0.5, CAM.aheadH, camTarget);
   if (G.launched) {
     const k = Math.min(1, (t - G.launchT) / 1.5);
     camTarget.lerp(kart.root.position, k);
   }
   camera.up.copy(camUp);
   camera.lookAt(camTarget);
-  const fov = 68 + 16 * boostK;
+  const fov = CAM.fov + 14 * boostK;
   if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
 }
 

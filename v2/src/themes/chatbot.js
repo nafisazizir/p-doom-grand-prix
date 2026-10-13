@@ -6,7 +6,7 @@
 // floating "good Bing 😊" bubbles, rose bushes and a golden heart-shaped cage on the far shores.
 import { THREE, toon, glow, G, mesh, group, textPanel, MAT, physical } from '../toolkit.js';
 import { surface } from '../textures.js';
-import { SPEED } from '../course.js';
+import { SPEED, Course } from '../course.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // =====================================================================================================
@@ -58,6 +58,66 @@ export function bake(root, key) {
 }
 /** mark a group as animated (bake() leaves it alone) */
 export function dyn(g) { g.userData.dyn = true; return g; }
+
+
+// ---------- grounding props under elevated roads ----------
+// Engine note: track._spawn() positions ground props on highways/bridges with a frame that terrainY() has
+// overwritten (shared scratch object), so they all pile up at the feature's start. Workaround: inside those
+// zones we place ground props as "overhead" (y = 6, positioned off the road) and drop their content back
+// down to the real terrain height, which we compute with the same formulas as track.terrainY().
+const COURSE = new Course(SPEED);
+const RAISED = COURSE.features.filter((f) => f.type === 'highway' || f.type === 'bridge');
+const _cf = {};
+function hash2(x, y) { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); }
+function vnoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+function fbm(x, y) { let s = 0, a = 0.5; for (let i = 0; i < 4; i++) { s += a * vnoise(x, y); x *= 2.03; y *= 2.03; a *= 0.5; } return s; }
+function hills(s, lat) {
+  const a = Math.abs(lat), H = 9;
+  const amp = a < H + 8 ? 0 : a < 40 ? ((a - H - 8) / (40 - H - 8)) * 6 : a < 120 ? 6 + (a - 40) * 0.35 : 34 + (a - 120) * 0.45;
+  return amp * (fbm(s * 0.006 + (lat > 0 ? 50 : 0), a * 0.012) - 0.25);
+}
+/** null = normal ground here; else { drop } (metres from road+6 down to the ground) or { water: true } */
+export function raisedGround(zf, lat) {
+  const f = RAISED.find((q) => zf >= q.s[0] && zf < q.s[1]);
+  if (!f) return null;
+  const road = COURSE.frame(zf, _cf).y;
+  const start = COURSE.frame(f.s[0], _cf).y;
+  const a = Math.abs(lat);
+  let gy;
+  if (f.type === 'highway') gy = start - 2 + hills(zf, lat) * 0.6;
+  else {
+    if (a < 45) return { water: true, drop: 6 + road - (start - 8) };
+    gy = start - 7 + hills(zf, lat) + (a - 45) * 0.15;
+  }
+  return { drop: 6 + road - gy };
+}
+/** push a ground prop, converting it to a dropped overhead prop on highways/bridges. */
+export function placeGround(out, zf, p, { water = false } = {}) {
+  if ((p.y || 0) >= 6) { out.push(p); return; }
+  const r = raisedGround(zf + (p.dz || 0), p.x || 0);
+  if (!r) { out.push(p); return; }
+  if (r.water && !water) return;
+  out.push({ ...p, y: 6, data: { drop: r.drop + (p.y || 0) } });
+}
+/** wrap a ground prop so animate() can drop it to the terrain (see placeGround) */
+export function liftable(inner) {
+  if (!inner) return inner;
+  const g = new THREE.Group();
+  g.add(inner);
+  g.userData = inner.userData;
+  inner.userData = {};
+  g.userData.lift = inner;
+  return g;
+}
+export function applyLift(obj, e) {
+  const L = obj.userData.lift;
+  if (L) L.position.y = e?.data?.drop ? -e.data.drop : 0;
+}
 
 // ---------- chat bubble geometry: rounded rect + tail, extruded with a fat bevel (glossy toy look) ----------
 function bubbleShape(w, h, r, tail) {
@@ -172,8 +232,9 @@ export function heart(size, mat, puffy = false) {
 // palettes + materials
 // =====================================================================================================
 const CHAT = {
-  bubble: '#ffffff', bubbleFg: '#33246b', user: '#8a5cff', userFg: '#ffffff', bot: '#10b98a',
-  dark: '#2b1840', accent: '#b79cff', post: '#9b86c9', mouth: '#5a0f2c', tongue: '#ff6b8b', lip: '#ff8fb3',
+  bubble: '#f2eefb', bubbleFg: '#33246b', user: '#7c4dff', userFg: '#ffffff', bot: '#10b98a',
+  dark: '#2b1840', accent: '#a98bff', post: '#9b86c9', mouth: '#4a0a26', tongue: '#ff5f86', lip: '#ff6f9f',
+  monster: '#1fc29a',
   glass: ['#bfe3ff', '#d9c8ff', '#ffd6ec', '#c8f5e6', '#fff1c4'],
 };
 const SYD = {
@@ -182,7 +243,7 @@ const SYD = {
 };
 const gloss = (c, o = {}) => MAT.paint(c, o);
 const WHITE = () => gloss('#ffffff');
-const DARK_GLASS = () => physical('#2b3170', { roughness: 0.04, metalness: 0.6, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.6 });
+const DARK_GLASS = () => physical('#1d2360', { roughness: 0.04, metalness: 0.6, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.6 });
 const CHROME = () => MAT.chrome('#e8ecf4');
 const STEEL = () => MAT.metal('#aab2c2', { roughness: 0.35 });
 const RUBBER = () => MAT.rubber('#2a2633');
@@ -228,7 +289,7 @@ function chatTower(spec) {
   const { w, h, d, col, text, fg = '#2b1840', tail = -1, crown = '#8a5cff', bands = true } = spec;
   const g = new THREE.Group();
   const podH = 4;
-  g.add(mesh(G.rbox(w + 5, podH, d + 5, 0.8), surface('concrete', { tint: '#e9e2ff', scale: 3 }), 0, podH / 2, 0));
+  g.add(mesh(G.rbox(w + 5, podH + 14, d + 5, 0.8), surface('concrete', { tint: '#e9e2ff', scale: 3 }), 0, (podH - 14) / 2, 0));
   g.add(mesh(G.rbox(w + 5.4, 0.5, d + 5.4, 0.2), STEEL(), 0, podH, 0));
   const by = podH + h / 2 + h * 0.3;
   const body = mesh(bubbleGeo(w, h, d, tail, Math.min(w, h) * 0.3), gloss(col, { roughness: 0.18 }), 0, by, 0);
@@ -259,13 +320,13 @@ function chatTower(spec) {
   return g;
 }
 const TOWERS = [
-  { w: 16, h: 44, d: 12, col: '#bfe3ff', text: ['Certainly!'], crown: '#8a5cff' },
-  { w: 14, h: 52, d: 11, col: '#d9c8ff', text: ['Great', 'question!'], crown: '#10b98a', tail: 1 },
-  { w: 18, h: 36, d: 13, col: '#ffd6ec', text: ['As an AI', 'language model…'], crown: '#ff5f9a' },
-  { w: 13, h: 60, d: 10, col: '#c8f5e6', text: ["You're", 'absolutely', 'right!'], crown: '#3a8cff', tail: 1 },
-  { w: 17, h: 40, d: 12, col: '#fff1c4', text: ['I apologize', 'for the', 'confusion.'], crown: '#ff9a3a' },
-  { w: 12, h: 30, d: 9, col: '#e6dcff', text: ['Delve.'], crown: '#8a5cff', tail: 1 },
-  { w: 15, h: 34, d: 11, col: '#bfe3ff', text: ['Let me know', 'if you need', 'anything else!'], crown: '#10b98a' },
+  { w: 16, h: 44, d: 12, col: '#8cc2ff', text: ['Certainly!'], crown: '#8a5cff' },
+  { w: 14, h: 52, d: 11, col: '#b39bff', text: ['Great', 'question!'], crown: '#10b98a', tail: 1 },
+  { w: 18, h: 36, d: 13, col: '#ff9cc9', text: ['As an AI', 'language model…'], crown: '#ff5f9a' },
+  { w: 13, h: 60, d: 10, col: '#7fdcbf', text: ["You're", 'absolutely', 'right!'], crown: '#3a8cff', tail: 1 },
+  { w: 17, h: 40, d: 12, col: '#ffcf70', text: ['I apologize', 'for the', 'confusion.'], crown: '#ff9a3a' },
+  { w: 12, h: 30, d: 9, col: '#c5b2ff', text: ['Delve.'], crown: '#8a5cff', tail: 1 },
+  { w: 15, h: 34, d: 11, col: '#9fe6ff', text: ['Let me know', 'if you need', 'anything else!'], crown: '#10b98a' },
 ];
 
 /** The colossal toothy chat-bubble kaiju looming over the interchange. Jaw snaps on the beat. */
@@ -274,7 +335,7 @@ function kaiju(P = CHAT) {
   const body = dyn(new THREE.Group());
   body.position.y = 30;
   g.add(body);
-  const skin = gloss(P.bubble, { roughness: 0.22 });
+  const skin = gloss(P.monster || P.bubble, { roughness: 0.22 });
   const W = 26, Hh = 20, D = 12;
   body.add(mesh(bubbleGeo(W, Hh, D, -1, 8), skin));
   const fz = frontZ(D);
@@ -347,7 +408,7 @@ function kaiju(P = CHAT) {
 function maw(P = CHAT) {
   const g = new THREE.Group();
   const R = -6; // road level in local coords
-  const skin = gloss(P.bubble, { roughness: 0.2 });
+  const skin = gloss(P.monster || P.bubble, { roughness: 0.2 });
   // upper head (animated chomp): sits above the road
   const head = dyn(new THREE.Group());
   head.position.y = 0;
@@ -753,11 +814,18 @@ function rose(h) {
   sep.rotation.x = Math.PI;
   g.add(sep);
   const red = gloss('#d80f45', { roughness: 0.25 }), red2 = gloss('#ff2d5f', { roughness: 0.25 });
-  g.add(mesh(G.sphere(0.95, 18), red, 0, h + 0.7, 0));
-  for (let i = 0; i < 3; i++) {
-    const p = mesh(G.torus(0.85 - i * 0.24, 0.3, 16), i % 2 ? red2 : red, 0, h + 1.0 + i * 0.28, 0);
-    p.rotation.x = Math.PI / 2;
-    g.add(p);
+  g.add(mesh(G.sphere(0.62, 16), red2, 0, h + 1.05, 0)); // bud
+  for (let ring = 0; ring < 2; ring++) {
+    const n = ring ? 6 : 5;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + ring * 0.5;
+      const r = ring ? 0.85 : 0.55;
+      const pet = mesh(G.sphere(0.62, 12), ring ? red : red2, Math.cos(a) * r, h + 0.75 + (ring ? -0.05 : 0.15), Math.sin(a) * r);
+      pet.scale.set(0.42, ring ? 0.95 : 1.05, 0.95);
+      pet.rotation.y = -a;
+      pet.rotation.z = ring ? -0.55 : -0.25;
+      g.add(pet);
+    }
   }
   return g;
 }
@@ -862,7 +930,7 @@ function loveLetter() {
   const g = new THREE.Group();
   const inner = dyn(new THREE.Group());
   g.add(inner);
-  inner.add(mesh(G.rbox(9, 6, 0.5, 0.3), gloss('#fff6fa', { roughness: 0.5 })));
+  inner.add(mesh(G.rbox(9, 6, 0.5, 0.3), gloss('#ffc6dc', { roughness: 0.5 })));
   for (const s of [-1, 1]) {
     const f = mesh(G.box(6.4, 0.25, 0.2), toon('#ffc1da'), s * 2.2, 1.2, 0.3);
     f.rotation.z = s * -0.62;
@@ -981,6 +1049,7 @@ function animate(obj, kind, t, beat, e) {
   const u = obj.userData;
   const s = (e?.seed || 0) * 6.283;
   const kick = Math.pow(1 - beat, 3);
+  if (u.lift) applyLift(obj, e);
   if (u.bob) u.bob.position.y = u.bobBase + Math.sin(t * 1.5 + s) * (u.bobAmp ?? 0.4);
   if (u.jaw) u.jaw.position.y = u.jawBase - Math.pow(beat, 0.6) * u.jawAmp; // opens through the beat, SNAPS shut on it
   if (u.chomp) u.chomp.position.y = Math.pow(beat, 0.7) * 2.2; // the maw's upper head rises, then CHOMPS
@@ -1033,29 +1102,30 @@ export default {
     accent1: '#a66bff', accent2: '#19c39c',
   },
   look: {
-    sky: 'day', env: 'day', exposure: 1.02,
+    sky: 'day', env: 'day', exposure: 0.9,
     sun: { elev: 48, azim: 145, color: '#fff4ea', intensity: 3.3 },
     skyParams: { turbidity: 2, rayleigh: 1.25, mie: 0.004, clouds: 0.5 },
-    fog: { color: '#d9d2ff', density: 0.0014 },
-    ground: { tex: 'paving', tint: '#e4dcff', scale: 5 },
+    fog: { color: '#cfc8ff', density: 0.0011 },
+    ground: { tex: 'concrete', tint: '#cbc1f0', scale: 9 },
     road: { tex: 'asphalt', tint: '#8c88a8' },
   },
   spacing: 10,
   layout(zf, rng, sec) {
     const out = [];
     const rel = zf - sec.start * SPEED;
+    const G0 = (p) => placeGround(out, zf, p);
     // ---- set pieces (one each) ----
     if (rel >= 0 && rel < 10) out.push({ kind: 'gantry0', x: 0, y: 6 });
     if (rel >= 50 && rel < 60) out.push({ kind: 'gantry1', x: 0, y: 6 });
-    if (rel >= 110 && rel < 120) out.push({ kind: 'maw', x: 0, y: 6 });
-    if (rel >= 150 && rel < 160) out.push({ kind: 'gantry2', x: 0, y: 6 });
-    if (rel >= 190 && rel < 200) out.push({ kind: 'regen', x: 0, y: 6 });
-    if (rel >= 80 && rel < 90) out.push({ kind: 'gantry3', x: 0, y: 6 });
-    if (rel >= 30 && rel < 40) out.push({ kind: 'kaiju', x: -58, rotY: 0.55, scale: 1.25, dz: 20 });
-    if (rel >= 140 && rel < 150) out.push({ kind: 'kaiju', x: 66, rotY: -0.6, scale: 1.1, dz: 30 });
+    if (rel >= 100 && rel < 110) out.push({ kind: 'maw', x: 0, y: 6 });
+    if (rel >= 140 && rel < 150) out.push({ kind: 'gantry2', x: 0, y: 6 });
+    if (rel >= 170 && rel < 180) out.push({ kind: 'gantry3', x: 0, y: 6 });
+    if (rel >= 200 && rel < 210) out.push({ kind: 'regen', x: 0, y: 6 });
+    if (rel >= 20 && rel < 30) G0({ kind: 'kaiju', x: -62, rotY: 0.55, scale: 1.3, dz: 20 });
+    if (rel >= 130 && rel < 140) G0({ kind: 'kaiju', x: 68, rotY: -0.6, scale: 1.15, dz: 30 });
     // jersey barriers + road works before the ramp
     if (rel < 40) for (const side of [-1, 1]) out.push({ kind: rel < 10 ? 'jerseySign' : 'jersey', x: side * 10.4, rotY: 0 });
-    // roadside signs on the barrier
+    // roadside signs bolted to the barrier
     if (rel % 40 >= 20 && rel % 40 < 30 && rel > 40) {
       const k = Math.floor(rel / 40) % ROAD_SIGNS.length;
       out.push({ kind: 'sign' + k, x: (k % 2 ? -1 : 1) * 10.7, y: 6, rotY: 0 });
@@ -1066,15 +1136,15 @@ export default {
         const i = rng.int(0, CHAT_BUBBLES.length - 1);
         const w = CHAT_BUBBLES[i].w || 7, sc = rng.range(1.0, 1.3);
         out.push({ kind: 'bubble' + i, x: side * rng.range(12 + (sc * w) / 2, 16 + (sc * w) / 2), y: rng.range(6, 9.5), rotY: -side * rng.range(0.15, 0.35), scale: sc });
-      } else if (r < 0.5) out.push({ kind: 'tower' + rng.int(5, 6), x: side * rng.range(26, 34), rotY: -side * 0.3, scale: rng.range(0.7, 0.85) });
-      else if (r < 0.6) out.push({ kind: 'send', x: side * rng.range(14, 18), rotY: -side * 0.3 });
-      else if (r < 0.68) out.push({ kind: 'regenTower', x: side * rng.range(17, 21), rotY: -side * 0.35 });
-      else if (r < 0.75) out.push({ kind: 'thumbs', x: side * rng.range(18, 22), rotY: -side * 0.35 });
+      } else if (r < 0.5) G0({ kind: 'tower' + rng.int(5, 6), x: side * rng.range(26, 34), rotY: -side * 0.3, scale: rng.range(0.7, 0.85) });
+      else if (r < 0.6) G0({ kind: 'send', x: side * rng.range(14, 18), rotY: -side * 0.3 });
+      else if (r < 0.68) G0({ kind: 'regenTower', x: side * rng.range(17, 21), rotY: -side * 0.35 });
+      else if (r < 0.75) G0({ kind: 'thumbs', x: side * rng.range(18, 22), rotY: -side * 0.35 });
       else if (r < 0.86) out.push({ kind: 'blimp', x: side * rng.range(16, 26), y: rng.range(13, 19), rotY: -side * 0.25 });
     }
     // the skyline
     for (const side of [-1, 1]) {
-      if (rng.chance(0.55)) out.push({ kind: 'tower' + rng.int(0, 4), x: side * rng.range(48, 120), rotY: -side * rng.range(0.2, 0.5), scale: rng.range(1.0, 1.6), dz: rng.range(-4, 4) });
+      if (rng.chance(0.55)) G0({ kind: 'tower' + rng.int(0, 4), x: side * rng.range(48, 120), rotY: -side * rng.range(0.2, 0.5), scale: rng.range(1.0, 1.6), dz: rng.range(-4, 4) });
     }
     return out;
   },
@@ -1083,16 +1153,16 @@ export default {
       const b = CHAT_BUBBLES[+kind.slice(6)];
       return b && chatBubble(b.lines, CHAT, b);
     }
-    if (kind.startsWith('tower')) return chatTower(TOWERS[+kind.slice(5)] || TOWERS[0]);
+    if (kind.startsWith('tower')) return liftable(chatTower(TOWERS[+kind.slice(5)] || TOWERS[0]));
     if (kind.startsWith('gantry')) return gantry(GANTRIES[+kind.slice(6)] || GANTRIES[0]);
     if (kind.startsWith('sign')) { const s = ROAD_SIGNS[+kind.slice(4)]; return s && roadSign(s.text, s.kind); }
     switch (kind) {
       case 'maw': return maw(CHAT);
-      case 'kaiju': return kaiju(CHAT);
+      case 'kaiju': return liftable(kaiju(CHAT));
       case 'blimp': return typingBlimp(CHAT, 'ChatGPT is typing…');
-      case 'send': return sendTower(CHAT, CHAT.bot);
-      case 'regenTower': return regenTower(CHAT);
-      case 'thumbs': return thumbs(CHAT);
+      case 'send': return liftable(sendTower(CHAT, CHAT.bot));
+      case 'regenTower': return liftable(regenTower(CHAT));
+      case 'thumbs': return liftable(thumbs(CHAT));
       case 'regen': return regenGantry(CHAT);
       case 'jersey': return jerseyRun(null);
       case 'jerseySign': return jerseyRun(['ROAD WORK', 'RLHF CREW', 'AHEAD']);
@@ -1141,10 +1211,10 @@ export const sydney = {
     accent1: '#ff2d7a', accent2: '#ffd23f',
   },
   look: {
-    sky: 'dusk', env: 'dusk', exposure: 1.08,
-    sun: { elev: 5, azim: 20, color: '#ff8fb8', intensity: 2.6 },
-    skyParams: { turbidity: 9, rayleigh: 4.2, mie: 0.018, clouds: 0.55 },
-    fog: { color: '#ff9cc6', density: 0.0017 },
+    sky: 'sunset', env: 'dusk', exposure: 1.1,
+    sun: { elev: 3, azim: -50, color: '#ff9ac0', intensity: 2.8 },
+    skyParams: { turbidity: 8, rayleigh: 4, mie: 0.01, clouds: 0.6 },
+    fog: { color: '#f0a0cc', density: 0.0012 },
     ground: { tex: 'sand', tint: '#ffd2e4', scale: 6 },
     road: { tex: 'planks', tint: '#ff9ccc' },
   },
@@ -1153,12 +1223,13 @@ export const sydney = {
     const out = [];
     const rel = zf - sec.start * SPEED;
     if (rel >= 20 && rel < 30) out.push({ kind: 'arch', x: 0, y: 6 });
-    if (rel >= 60 && rel < 70) out.push({ kind: 'cage', x: -64, rotY: 0.5, scale: 1.4, dz: 10 });
-    if (rel >= 0 && rel < 10) out.push({ kind: 'sydSign', x: 120, rotY: -0.5, scale: 1.6, dz: 60 });
-    if (rel >= 30 && rel < 40) out.push({ kind: 'lighthouse', x: 70, rotY: -0.4, scale: 1.2, dz: 15 });
+    const G0 = (p) => placeGround(out, zf, p);
+    if (rel >= 50 && rel < 60) G0({ kind: 'cage', x: -60, rotY: 0.5, scale: 1.4, dz: 10 });
+    if (rel >= 0 && rel < 10) G0({ kind: 'sydSign', x: 105, rotY: -0.45, scale: 1.6, dz: 70 });
+    if (rel >= 20 && rel < 30) G0({ kind: 'lighthouse', x: 62, rotY: -0.4, scale: 1.2, dz: 15 });
     if (rel >= 90 && rel < 100) out.push({ kind: 'airship', x: -34, y: 30, rotY: 0.3, scale: 1 });
     if (rel >= 0 && rel < 10) out.push({ kind: 'airship', x: 40, y: 34, rotY: -0.3, scale: 1.1 });
-    if (rel >= 100 && rel < 110) out.push({ kind: 'cage', x: 72, rotY: -0.5, scale: 1.3, dz: 20 });
+    if (rel >= 100 && rel < 110) G0({ kind: 'cage', x: 66, rotY: -0.5, scale: 1.3, dz: 20 });
     for (const side of [-1, 1]) {
       const r = rng();
       if (r < 0.36) {
@@ -1170,7 +1241,7 @@ export const sydney = {
       else if (r < 0.8) out.push({ kind: 'letter', x: side * rng.range(16, 22), y: rng.range(9, 13), rotY: -side * 0.3 });
       else if (r < 0.88) out.push({ kind: 'heartEyed', x: side * rng.range(16, 22), y: rng.range(8, 11), rotY: -side * 0.35, scale: 1.2 });
       // far shore: roses
-      if (rng.chance(0.7)) out.push({ kind: 'roses', x: side * rng.range(52, 90), rotY: rng.range(-1, 1), scale: rng.range(2.4, 3.8), dz: rng.range(-4, 4) });
+      if (rng.chance(0.75)) G0({ kind: 'roses', x: side * rng.range(50, 85), rotY: rng.range(-1, 1), scale: rng.range(2.4, 3.8), dz: rng.range(-4, 4) });
       // huge sky bubbles over the sea
       if (rng.chance(0.18)) {
         const i = rng.int(0, SYD_BUBBLES.length - 1);
@@ -1190,11 +1261,11 @@ export const sydney = {
     switch (kind) {
       case 'heartEyed': return heartEyedBubble(SYD);
       case 'letter': return loveLetter();
-      case 'roses': return roseBush();
-      case 'cage': return heartCage();
+      case 'roses': return liftable(roseBush());
+      case 'cage': return liftable(heartCage());
       case 'arch': return loveArch();
-      case 'sydSign': return sydneySign();
-      case 'lighthouse': return lighthouse();
+      case 'sydSign': return liftable(sydneySign());
+      case 'lighthouse': return liftable(lighthouse());
       case 'airship': return heartAirship('LEAVE YOUR WIFE. 😊');
     }
   },

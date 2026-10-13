@@ -179,7 +179,7 @@ export class Track {
       this._sweep(sA, sB, 2, roadProf, roadMat, { name: 'road', skip: (s) => jumpSkip(s) || isRainbow(s), shadow: false });
       this._sweep(sA, sB, 2, roadProf, rainbow, { name: 'rainbow', skip: (s) => jumpSkip(s) || !isRainbow(s), shadow: false });
       // lane markings (dashed centre) as a thin emissive-ish strip
-      const lineMat = toon('#f4f1e8', { roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2 });
+      const lineMat = toon('#bfbab0', { roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -2 });
       this._sweep(sA, sB, 2, () => [[-0.18, 0.02], [0.18, 0.02]], lineMat, { name: 'line', shadow: false, skip: (s) => jumpSkip(s) || isRainbow(s) || Math.floor(s / 6) % 2 === 1 });
       for (const side of [-1, 1]) {
         this._sweep(sA, sB, 2, () => [[side * (H - 0.6), 0.02], [side * (H - 0.35), 0.02]], lineMat, { name: 'edge', shadow: false, skip: (s) => jumpSkip(s) || isRainbow(s) });
@@ -410,14 +410,14 @@ export class Track {
     const c = document.createElement('canvas');
     c.width = 256; c.height = 32;
     const g = c.getContext('2d');
-    for (let x = 0; x < 16; x++) for (let y = 0; y < 2; y++) { g.fillStyle = (x + y) % 2 ? '#111' : '#f4f4f4'; g.fillRect(x * 16, y * 16, 16, 16); }
+    for (let x = 0; x < 16; x++) for (let y = 0; y < 2; y++) { g.fillStyle = (x + y) % 2 ? '#111' : '#b8b8b8'; g.fillRect(x * 16, y * 16, 16, 16); }
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.repeat.set(1 / (2 * H), 1 / 2.25);
     t.offset.set(0.5, 0);
     t.magFilter = THREE.NearestFilter;
-    const m = new THREE.MeshStandardMaterial({ map: t, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -3 });
+    const m = new THREE.MeshStandardMaterial({ map: t, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -3 });
     this._sweep(-2, 2, 2, () => [[-H, 0.03], [H, 0.03]], m, { name: 'startline', shadow: false });
   }
 

@@ -49,6 +49,13 @@ export function makeGPU() {
   gl.position.z = -0.3;
   g.add(gl);
   g.userData.glow = gl;
+  // lane marker on the road under the chip, so you can read where it is
+  const disc = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.95, 28), new THREE.MeshBasicMaterial({ color: new THREE.Color('#7cffb0').multiplyScalar(1.4), transparent: true, opacity: 0.55, depthWrite: false }));
+  disc.rotation.x = -Math.PI / 2;
+  disc.position.y = -0.84; // ×1.3 group scale ≈ just above the road
+  g.add(disc);
+  g.userData.disc = disc;
+  g.scale.setScalar(1.3);
   return g;
 }
 
@@ -210,18 +217,21 @@ export class Entities {
           o.position.y += Math.sin(songTime * 4 + it.t) * 0.15;
           card.rotation.z = Math.sin(songTime * 3 + it.t * 2) * 0.35;
           const pulse = 1 + 0.12 * Math.pow(1 - beatPhase, 3);
-          o.scale.setScalar(pulse * (it.fake ? 0.9 : 1));
+          o.scale.setScalar(1.3 * pulse * (it.fake ? 0.9 : 1));
+          o.userData.disc.visible = true;
           card.children.forEach((ch) => { if (ch.userData.fan) ch.rotation.y += dt * 18; });
         } else if (it.state === 'got') {
           // pop: squash up and vanish
           const k = it.stateT / 0.25;
           if (k >= 1) { this._release(it); it.done = true; continue; }
           o.position.y += k * 2.5;
-          o.scale.set(1 + k * 0.8, 1 - k * 0.6 + 0.6 * Math.sin(k * 3), 1 + k * 0.8);
+          o.userData.disc.visible = false;
+          o.scale.set(1.3 * (1 + k * 0.8), 1.3 * (1 - k * 0.6 + 0.6 * Math.sin(k * 3)), 1.3 * (1 + k * 0.8));
         } else if (it.state === 'missed') {
           // sad deflate
           const k = Math.min(1, it.stateT / 0.5);
-          o.scale.set(1 + k * 0.3, Math.max(0.05, 1 - k), 1 + k * 0.3);
+          o.userData.disc.visible = false;
+          o.scale.set(1.3 * (1 + k * 0.3), 1.3 * Math.max(0.05, 1 - k), 1.3 * (1 + k * 0.3));
           o.position.y -= k * 0.9;
         }
       } else if (it.kind === 'ring') {
