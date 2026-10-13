@@ -298,6 +298,14 @@ function togglePause() {
   else { paused = false; showScreen(null); audio.play(audio.pausedAt); clock.reset(audio.pausedAt); }
 }
 
+function rivalLine() {
+  const p = rivals?.place || 1;
+  const suf = p === 1 ? 'st' : p === 2 ? 'nd' : p === 3 ? 'rd' : 'th';
+  if (p === 1) return '1st (the other labs are "reviewing the results")';
+  const ahead = rivals.list.filter((r) => r.off > 0).map((r) => r.def.name);
+  return `${p}${suf}, behind ${ahead.join(' & ')}`;
+}
+
 function finish() {
   if (G.finished) return;
   G.finished = true;
@@ -318,6 +326,7 @@ function finish() {
   const total = level.notes.length;
   const acc = total ? G.hits / total : 0;
   const rows = [
+    ['Final position', rivalLine()],
     ['GPUs acquired', G.gpus],
     ['Max combo', 'x' + G.maxCombo],
     ['Accuracy', (acc * 100).toFixed(0) + '%'],
