@@ -6,11 +6,12 @@ import { getManifest, ROOT } from './textures.js';
 
 const cache = new Map(); // id → { scene, size: Vector3 }
 
-export async function preloadModels() {
+/** extra: { id: { file, alphaMap? } } — v3 themes contribute their own models via `theme.models` (paths from the project root) */
+export async function preloadModels(extra = {}) {
   const man = getManifest();
-  if (!man?.models) return;
+  const all = { ...(man?.models || {}), ...extra };
   const loader = new GLTFLoader();
-  await Promise.all(Object.entries(man.models).map(async ([id, info]) => {
+  await Promise.all(Object.entries(all).map(async ([id, info]) => {
     try {
       const gltf = await loader.loadAsync(new URL(info.file, ROOT).href);
       const scene = gltf.scene;

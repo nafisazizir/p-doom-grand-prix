@@ -95,12 +95,12 @@ async function boot() {
     throw e;
   }
   window.__bootStep = "renderer"; setupRenderer(); window.__bootStep = "envs";
-  await Promise.all([R.loadEnvs(getManifest(), ROOT), preloadModels()]);
+  await Promise.all([R.loadEnvs(getManifest(), ROOT), preloadModels(Object.assign({}, ...Object.values(THEMES).map((t) => t.models || {})))]);
   window.__bootStep = "track";
   track = new Track(scene, sections, R);
   kart = new Kart(scene);
   rivals = new Rivals(scene, track);
-  globalThis.__dbg = { get camera() { return camera; }, get kart() { return kart; }, get track() { return track; }, get rivals() { return rivals; }, CAM, measure };
+  globalThis.__dbg = { get camera() { return camera; }, get kart() { return kart; }, get track() { return track; }, get rivals() { return rivals; }, CAM, measure, propSizes };
   particles = new Particles(scene);
   smoke = new Smoke(scene);
   level = v2Level(buildLevel(bm, structuredClone(sections), THEMES));
@@ -958,6 +958,19 @@ function beatPhaseAt(t) {
   while (lo < hi) { const m = (lo + hi + 1) >> 1; if (beats[m] <= t) lo = m; else hi = m - 1; }
   const b0 = beats[lo], b1 = beats[lo + 1] ?? b0 + level.beatLen;
   return clamp((t - b0) / (b1 - b0), 0, 1);
+}
+
+/** Size audit for live scenery: { 'theme:kind': { w, h, d, kh, x } } (world units; kh = height in kart+driver heights) */
+function propSizes() {
+  const out = {}, box = new THREE.Box3(), v = new THREE.Vector3();
+  for (const a of track.active) {
+    if (out[a.key]) continue;
+    box.setFromObject(a.obj);
+    box.getSize(v);
+    const r = (x) => Math.round(x * 10) / 10;
+    out[a.key] = { w: r(v.x), h: r(v.y), d: r(v.z), kh: r(v.y / (KART_W * 1.1)) };
+  }
+  return out;
 }
 
 /** Frame metrics in the same terms as the Mario Kart stills (1456×819 px): __dbg.measure() in the console / CDP. */

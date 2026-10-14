@@ -9,14 +9,16 @@
 //   palette: { skyTop, skyBottom, fog?, road, ground, kerb?, accent1, accent2 },  // CSS hex strings
 //   spacing: 10,                     // world units between layout() calls
 //   layout(zf, rng, sec) → [{ kind, x, y?, dz?, rotY?, scale? }]
-//       x = lateral world offset from the road centre (road surface is ±7, kerbs to ±8.1).
-//       Keep ground props at |x| ≥ 9.5. Overhead props (spanning the road) need y ≥ 7.
+//       x = lateral world offset from the road centre. v3: road ±10.5 (ROAD_HALF), kerbs to ±11.8.
+//       v2-era layouts (|x| > 9.2) are shifted out by 1.5 automatically; set abs: true to place exactly.
+//       Keep ground props at |x| ≥ 12.3 (abs). Overhead props (spanning the road) need y ≥ 7.
 //       Objects face +z (towards the oncoming camera) by default.
 //   makeProp(kind) → THREE.Object3D  // built with ../toolkit.js; pooled + reused per kind, so no per-instance state
 //   animate?(obj, kind, t, beatPhase, entry)   // optional per-frame animation (t = song seconds, beatPhase 0..1)
 //   billboards: ['SERIES A ✓', ...], billboardEvery: 75, billboardStyle?: { bg, fg, border, frame, postColor }
 //   hazards: ['oom', ...]            // ids from ../hazards.js
 //   enterLines?: ['...']             // announcer lines on entering the section (one is picked)
+//   models?: { id: { file: 'assets/v3/models/<id>/<id>.gltf', alphaMap? } }  // v3: extra CC0 glTFs preloaded at boot; use model(id)
 // }
 import garage from './garage.js';
 import datacenter, { datacenterFire } from './datacenter.js';
