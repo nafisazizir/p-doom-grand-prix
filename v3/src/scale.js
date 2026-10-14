@@ -8,7 +8,7 @@
 
 export const KART_SCALE = 0.5; // hero kart model is 3.38 wide → 1.69 world units
 export const KART_W = 3.38 * KART_SCALE; // rear wheel-to-wheel width (the "kw" unit)
-export const RIVAL_SCALE = 0.62; // rival models are smaller (2.6 wide) → about the same width as the hero
+export const RIVAL_SCALE = KART_SCALE; // rivals share the hero's chassis (3.38 model units wide) → same 1.69 width
 
 export const CAMERA = {
   fov: 58,
@@ -28,5 +28,5 @@ export const ITEM = {
   ringY: 1.85,
   powerScale: 0.72,
   powerY: 1.15,
-  hazardH: 0.8, // hazards keep their road-normalized width; heights tone down to ≈ 1 kart height
+  hazardH: 1, // hazard models are built at kart scale (≈1–1.3 kh tall, 7.8 wide); entities.js stretches the width to the road-normalized hit width
 };

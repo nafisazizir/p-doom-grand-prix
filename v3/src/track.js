@@ -754,13 +754,14 @@ export class Track {
       if (isBB && (feats.bridge || feats.highway)) return;
     }
     const key = th.id + ':' + p.kind;
-    let obj;
+    let obj, fresh = false;
     const pool = this.pools.get(key);
     if (pool && pool.length) obj = pool.pop();
     else {
       obj = p.make ? p.make() : th.makeProp(p.kind);
       if (!obj) return;
       obj.traverse((o) => { if (o.isMesh) { const m = o.material; o.castShadow = !!m && !m.transparent && !m.isMeshBasicMaterial && !m.isShaderMaterial; o.receiveShadow = true; } });
+      fresh = true;
     }
     const cy = Math.cos(fr.yaw), sy = Math.sin(fr.yaw);
     obj.position.set(fr.x + cy * lat, baseY + (p.y || 0), fr.z + sy * lat);
@@ -768,8 +769,18 @@ export class Track {
     const s = p.scale || 1;
     obj.scale.set(s, s, s);
     obj.visible = true;
-    this.scene.add(obj);
-    this.active.push({ obj, key, zf, theme: th, kind: p.kind, data: p.data, seed: (zf * 13.37) % 1 });
+    const entry = { obj, key, zf, theme: th, kind: p.kind, data: p.data, seed: (zf * 13.37) % 1 };
+    this.active.push(entry);
+    // a brand-new prop may need new shader programs: compile them in parallel (KHR_parallel_shader_compile) and only
+    // add it to the scene once ready, so the first sight of a theme's scenery doesn't hitch (it spawns ~330 m ahead)
+    const r = this.R?.renderer;
+    if (fresh && r?.compileAsync && !this._noAsync) {
+      entry.pending = true;
+      r.compileAsync(obj, this.R.camera, this.scene).catch(() => {}).then(() => {
+        entry.pending = false;
+        if (this.active.includes(entry)) this.scene.add(obj);
+      });
+    } else this.scene.add(obj);
   }
 
   _makeLiveBB() {

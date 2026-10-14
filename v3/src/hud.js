@@ -182,22 +182,26 @@ export const hud = {
   // ---------- speed lines (2D overlay) ----------
   _newLine(randomR) {
     const a = Math.random() * Math.PI * 2;
-    return { a, r: randomR ? Math.random() : 0.3 + Math.random() * 0.2, v: 1.5 + Math.random() * 2, w: 1 + Math.random() * 3 };
+    return { a, r: randomR ? 0.6 + Math.random() * 0.5 : 0.55 + Math.random() * 0.1, v: 1.2 + Math.random() * 1.6, w: 1 + Math.random() * 3 };
   },
+  /** sparse, thin streaks at the frame edges only: the renderer's radial speed blur does the heavy lifting on boost */
   drawFx(dt, intensity, color = '255,255,255') {
     const g = this.fx;
     const W = this.el.fx.width, H = this.el.fx.height;
-    g.clearRect(0, 0, W, H);
+    if (this._fxDrawn) { g.clearRect(0, 0, W, H); this._fxDrawn = false; }
     if (intensity < 0.02) return;
-    const cx = W / 2, cy = H * 0.45, R = Math.hypot(W, H) * 0.6;
+    this._fxDrawn = true;
+    const cx = W / 2, cy = H * 0.42, R = Math.hypot(W, H) * 0.6;
     g.lineCap = 'round';
-    for (const L of this.lines) {
-      L.r += L.v * dt * (0.6 + intensity);
+    for (let i = 0; i < 34; i++) {
+      const L = this.lines[i];
+      L.r += L.v * dt * (0.8 + intensity);
       if (L.r > 1.1) Object.assign(L, this._newLine(false));
-      const r0 = L.r * R, r1 = (L.r + 0.12 * intensity) * R;
-      if (L.r < 0.35) continue;
-      g.strokeStyle = `rgba(${color},${(0.55 * intensity * Math.min(1, (L.r - 0.35) * 4)).toFixed(3)})`;
-      g.lineWidth = L.w * (1 + intensity);
+      if (L.r < 0.6) continue;
+      const r0 = L.r * R, r1 = (L.r + 0.09 * intensity) * R;
+      const fade = Math.min(1, (L.r - 0.6) * 5) * Math.min(1, (1.1 - L.r) * 6);
+      g.strokeStyle = `rgba(${color},${(0.3 * intensity * fade).toFixed(3)})`;
+      g.lineWidth = 0.6 + L.w * 0.45;
       g.beginPath();
       g.moveTo(cx + Math.cos(L.a) * r0, cy + Math.sin(L.a) * r0);
       g.lineTo(cx + Math.cos(L.a) * r1, cy + Math.sin(L.a) * r1);

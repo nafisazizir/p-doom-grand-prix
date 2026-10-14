@@ -18,7 +18,7 @@ import { HAZARDS } from './hazards.js';
 import { THEMES, getTheme } from './themes/index.js';
 import { debug } from '../../src/debug.js';
 import { clamp, lerp } from './toolkit.js';
-import { CAMERA, KART_W, KART_SCALE } from './scale.js';
+import { CAMERA, KART_W, KART_SCALE, ITEM } from './scale.js';
 
 // ---------------- tuning ----------------
 // P(doom) = sigmoid(doomX). doomX starts at 0 (= 0.50) and is unbounded, so the meter eases towards 0/1.
@@ -103,6 +103,7 @@ async function boot() {
   globalThis.__dbg = { get camera() { return camera; }, get kart() { return kart; }, get track() { return track; }, get rivals() { return rivals; }, CAM, measure, propSizes };
   particles = new Particles(scene);
   smoke = new Smoke(scene);
+  globalThis.__fx = { particles, smoke }; // effects debugging (CDP tests)
   level = v2Level(buildLevel(bm, structuredClone(sections), THEMES));
   ents = new Entities(scene, track, level);
   window.__bootStep = "debug"; debug.init({ getInfo: debugInfo, setSfx: (v) => audio.setSfxVolume(v) });
@@ -463,6 +464,12 @@ function screenOf(zf, x, y) {
   tmpV.project(camera);
   return [(tmpV.x + 1) / 2 * innerWidth, (1 - tmpV.y) / 2 * innerHeight];
 }
+/** the kart's world velocity at track distance zf (× k): bursts ride along with you instead of hitting the camera */
+const fxVel = new THREE.Vector3(), fxFr = {}, fxA = new THREE.Vector3(), fxB = new THREE.Vector3();
+function kartVel(zf, k = 1) {
+  const f = track.course.frame(zf, fxFr);
+  return fxVel.set(f.tx * SPEED * k, f.ty * SPEED * k, f.tz * SPEED * k);
+}
 function boosting(t) { return t < G.boostUntil; }
 function startBoost(t, dur, line = true) {
   if (!boosting(t) && line && t - (G.lastAgiLine ?? -99) > 10) { hud.announce('FEEL THE AGI!', 1300); G.lastAgiLine = t; }
@@ -491,7 +498,7 @@ function collect(n, t) {
   const [sx, sy] = screenOf(zf, n.flyX ?? n.x, 1.6);
   if (n.fake) {
     hud.popup('NOT REAL', sx, sy, 'red');
-    particles.burst(track.worldPos(zf, n.x, 1.2, tmpV), ['#c86bff', '#ffffff'], 10, { speed: 4 });
+    particles.burst(track.worldPos(zf, n.x, ITEM.gpuY, tmpV), ['#c86bff', '#e6c8ff'], 8, { kind: 'glow', speed: 2.2, up: 0.6, size: 0.5, life: 0.45, grav: -1, drag: 3, carry: kartVel(zf, 0.95) });
     sfx.play('wah');
     return;
   }
@@ -504,7 +511,11 @@ function collect(n, t) {
   addDoom(TUNE.collect);
   sfx.play('pickup', { step: G.combo - 1 });
   hud.popupCount(v, 'GPU', sx, sy, v > 1 ? 'gold' : '');
-  particles.burst(track.worldPos(zf, n.flyX ?? n.x, 1.2, tmpV), ['#7cffb0', '#ffd23f', '#ffffff'], 14, { speed: 7, carry: 24 });
+  {
+    const p = track.worldPos(G.songTime * SPEED, n.flyX ?? n.x, ITEM.gpuY, tmpV), kv = kartVel(zf, 0.97);
+    particles.burst(p, ['#7cffb0', '#ffe680', '#ffffff'], 9, { kind: 'star', speed: 3.2, up: 1.4, size: 0.42, life: 0.5, grav: -5, drag: 2.6, carry: kv });
+    particles.spawn(p, kv, '#9dffc4', { kind: 'glow', size: 1.3, end: 1.7, life: 0.2, grav: 0, drag: 0, hdr: 1.4, alpha: 0.7, base: kv });
+  }
   // combo tiers
   for (let i = 0; i < TIERS.length; i++) {
     if (G.combo === TIERS[i][0]) {
@@ -577,7 +588,11 @@ function hitHazard(h, t) {
     hud.setPower(null);
     hud.stamp('BLOCKED BY SAFETY TEAM');
     sfx.play('clang');
-    particles.burst(track.worldPos(h.t * SPEED, h.x, 1, tmpV), ['#5affd0', '#ffffff'], 24, { speed: 10 });
+    {
+      const p = track.worldPos(h.t * SPEED, G.kartX, 1.1, tmpV), kv = kartVel(h.t * SPEED, 0.95);
+      particles.burst(p, ['#5affd0', '#c8fff0', '#ffffff'], 16, { kind: 'star', speed: 4.5, up: 1.2, size: 0.45, life: 0.5, grav: -3, drag: 2.5, carry: kv });
+      particles.spawn(p, kv, '#5affd0', { kind: 'glow', size: 2.6, end: 1.5, life: 0.25, grav: 0, drag: 0, hdr: 1.3, alpha: 0.6, base: kv });
+    }
     return;
   }
   h.state = 'hit';
@@ -597,8 +612,18 @@ function hitHazard(h, t) {
   const pool = [...(def.lines || []), ...generic];
   hud.announce(pool[(G.hazardsHit * 7) % pool.length], 1500);
   hud.popup('+0.03 P(DOOM)', sx, sy, 'red');
-  particles.burst(track.worldPos(h.t * SPEED, h.x, 1, tmpV), ['#ff3b5c', '#ffd23f', '#2b1840'], 20, { speed: 9 });
-  smoke.puff(track.worldPos(h.t * SPEED, h.x, 1, tmpV), '#4a4050', 18, { speed: 5, size: 2.2, alpha: 0.6 });
+  {
+    // impact at the kart's nose: glowing shards + a few hot streaks + a soft grey puff
+    const p = track.worldPos(h.t * SPEED, clamp(G.kartX, h.x - h.w / 2, h.x + h.w / 2), 0.9, tmpV), kv = kartVel(h.t * SPEED, 0.9);
+    if (def.splash) {
+      // puddles splash: glossy droplets + a soft coloured mist, no flying debris
+      particles.burst(p, def.splash, 18, { kind: 'glow', speed: 4.5, up: 4, size: 0.32, life: 0.6, grav: -16, drag: 1, hdr: 1.8, carry: kv });
+      smoke.puff(p, def.splash[1], 5, { speed: 2, size: 1.3, grow: 1.5, alpha: 0.25, life: 0.7, up: 0.8, carry: kartVel(h.t * SPEED, 0.88) });
+    } else particles.burst(p, ['#ff5c7a', '#ffd23f', '#ffffff', '#7fd4ff'], 14, { kind: 'shard', speed: 6, up: 3, size: 0.4, life: 0.7, grav: -14, drag: 1.4, hdr: 1.5, carry: kv });
+    particles.burst(p, ['#ffd27a', '#ffffff'], 10, { kind: 'streak', speed: 8, up: 2, size: 0.13, life: 0.35, grav: -8, drag: 2, carry: kv });
+    particles.spawn(p, kv, '#ffd9a0', { kind: 'glow', size: 2.4, end: 1.4, life: 0.18, grav: 0, drag: 0, hdr: 1.4, alpha: 0.8, base: kv });
+    smoke.puff(p, '#a49eaa', 6, { speed: 2, size: 1.3, grow: 1.6, alpha: 0.3, life: 0.9, up: 1.2, carry: kartVel(h.t * SPEED, 0.85) });
+  }
   def.hit(G);
   assist('crash');
 }
@@ -608,7 +633,14 @@ function hitRing(r, t) {
   r.stateT = 0;
   G.ringsHit++;
   const [sx, sy] = screenOf(r.t * SPEED, r.x, 2.5);
-  particles.burst(track.worldPos(r.t * SPEED, r.x, 1.6, tmpV), ['#ffe066', '#ffffff', '#ffb800'], 22, { speed: 9, carry: 24 });
+  {
+    // golden streaks fly outwards in the ring's plane, plus a few sparkles
+    const zf = r.t * SPEED, f = track.course.frame(zf, fxFr);
+    const c = track.worldPos(zf, r.x, ITEM.ringY, tmpV), kv = kartVel(zf, 0.95);
+    fxA.set(f.rx, f.ry, f.rz); fxB.set(f.ux, f.uy, f.uz);
+    particles.ring(c, fxA, fxB, ITEM.ringR, ['#ffe066', '#ffffff', '#ffb800'], 24, { kind: 'streak', speed: 5, size: 0.2, life: 0.42, grav: 0, drag: 3.5, carry: kv });
+    particles.burst(c, ['#fff2a0', '#ffffff'], 6, { kind: 'star', speed: 2.5, up: 0.5, size: 0.5, life: 0.45, grav: -2, drag: 3, carry: kv });
+  }
   if (r.chain) {
     const prog = (G.chainProgress.get(r.chain) || 0) + 1;
     G.chainProgress.set(r.chain, prog);
@@ -633,12 +665,15 @@ function hitRing(r, t) {
   }
 }
 function fireworks() {
-  const kz = G.songTime * SPEED;
-  const cols = ['#ff5ca8', '#5affd0', '#ffd23f', '#8a6cff', '#ffffff'];
+  const cols = ['#ff5ca8', '#5affd0', '#ffd23f', '#8a6cff', '#7fd4ff'];
   for (let k = 0; k < 6; k++) {
     setTimeout(() => {
-      const p = track.worldPos(kz + 40 + k * 8, (k % 2 ? 1 : -1) * 1.4, 10 + (k % 3) * 3, new THREE.Vector3());
-      particles.burst(p, [cols[k % cols.length], '#ffffff'], 40, { speed: 14, grav: -6, life: 1.1, size: 0.5, up: 0 });
+      const z = G.songTime * SPEED + 34 + k * 6;
+      const p = track.worldPos(z, (k % 2 ? 1 : -1) * 1.15, 8.5 + (k % 3) * 2.5, new THREE.Vector3());
+      const kv = kartVel(z, 0.75).clone();
+      particles.burst(p, [cols[k % cols.length], cols[(k + 2) % cols.length], '#ffffff'], 36, { kind: 'streak', speed: 13, up: 0, spread: 1.4, grav: -4, drag: 1.8, life: 1.1, size: 0.45, carry: kv });
+      particles.burst(p, [cols[k % cols.length], '#ffffff'], 10, { kind: 'star', speed: 6, up: 0, spread: 1.4, grav: -3, drag: 1.5, life: 1.4, size: 0.6, carry: kv });
+      particles.spawn(p, kv, cols[k % cols.length], { kind: 'glow', size: 6, end: 1.4, life: 0.3, grav: 0, drag: 0, hdr: 1.5, alpha: 0.7, base: kv });
       sfx.play('whoosh');
     }, k * 120);
   }
@@ -651,6 +686,12 @@ function hitPower(p, t) {
   G.powerStart = t;
   G.powerUntil = p.type === 'magnet' ? t + 5 : p.type === 'scale' ? t + 4 : p.type === 'rain' ? t + 2.5 : Infinity;
   sfx.play('powerup');
+  {
+    // the item box shatters into glossy rainbow shards
+    const zf = p.t * SPEED, q = track.worldPos(zf, p.x, ITEM.powerY, tmpV), kv = kartVel(zf, 0.95);
+    particles.burst(q, ['#ff8ad8', '#8afcff', '#fff38a', '#b8a0ff', '#9dffb0'], 16, { kind: 'shard', speed: 5, up: 2.2, size: 0.42, life: 0.65, grav: -10, drag: 1.6, hdr: 1.7, carry: kv });
+    particles.burst(q, ['#ffffff'], 5, { kind: 'star', speed: 2.5, up: 0.8, size: 0.6, life: 0.4, grav: -1, drag: 3, carry: kv });
+  }
   hud.card(POWER_NAMES[p.type], POWER_DESC[p.type]);
   assist('power');
   if (p.type === 'scale') hud.announce('SCALE IS ALL YOU NEED', 1600);
@@ -874,46 +915,69 @@ function frame(now) {
     boostK, spinT: t < G.spinUntil ? 1 : 0, scaleK, shield: G.power === 'shield', shades: G.combo >= 50, beatPhase, launchK,
     glide: mode === 'RACE' && !!track.course.featuresAt(kartZ).jump?.glide,
     camPos: camera.position,
+    hop: track.course.hopAt(kartZ), air: mode === 'RACE' && (!!track.course.featuresAt(kartZ).jump || G.launched),
   });
 
-  // trails
+  // trails, drift sparks, tyre dust, landing puffs (sizes in kart terms: sparks 0.15–0.3 kh, dust ≈ 1 kw)
   if (mode === 'RACE' && !paused) {
-    const back = track.worldPos(kartZ - 1.5 * KART_SCALE, G.kartX, 0.7 * KART_SCALE, tmpV);
-    const TT = track.course.frame(kartZ, frameTmp2);
-    if (G.combo >= 25) {
-      const hue = (now / 6) % 360;
-      particles.spawn(back, { x: TT.tx * 22 + (Math.random() - 0.5) * 1.5, y: TT.ty * 22 + 0.6, z: TT.tz * 22 }, new THREE.Color().setHSL(hue / 360, 0.9, 0.6), { life: 0.4, size: 0.22, grav: 0 });
-    } else if (G.combo >= 10 && Math.random() < 0.6) {
-      particles.spawn(back, { x: TT.tx * 22 + (Math.random() - 0.5) * 3, y: TT.ty * 22 + 1.5, z: TT.tz * 22 }, Math.random() < 0.5 ? '#ffffff' : '#ffe680', { life: 0.4, size: 0.16, grav: -2 });
-    }
-    if (boostK > 0.3) {
-      particles.spawn(back, { x: TT.tx * 18 + (Math.random() - 0.5) * 2, y: TT.ty * 18 + 0.5, z: TT.tz * 18 }, Math.random() < 0.5 ? '#4ad8ff' : '#ffffff', { life: 0.3, size: 0.22, grav: 0 });
-    }
-  }
-  particles.update(dt);
-  // dust + landing puffs
-  if (mode === 'RACE' && !paused) {
+    // the kart's actual world velocity (follows glides/hops too); falls back to the track tangent after teleports
+    trailKv.copy(kart.root.position).sub(lastKartPos).divideScalar(Math.max(dt, 1e-3));
+    if (!(trailKv.lengthSq() < 90 * 90) || dt <= 0) trailKv.copy(kartVel(kartZ, 1));
+    const kv = trailKv;
     const feats = track.course.featuresAt(kartZ);
     const air = !!feats.jump || G.launched;
-    // tyre dust only when steering hard: small, warm and faint (the outer rear wheel kicks it up)
-    if (!air && Math.abs(G.kartVel) > 2.2 && Math.abs(G.steer) > 0.6 && Math.random() < 0.45) {
-      const sx = (G.kartVel > 0 ? -1.3 : 1.3) * KART_SCALE;
-      const wp = track.worldPos(kartZ - 1.4 * KART_SCALE, G.kartX + sx / LANE, 0.15, tmpV);
-      smoke.spawn(wp, { x: (Math.random() - 0.5) * 1.2, y: 0.5 + Math.random() * 0.6, z: (Math.random() - 0.5) * 1.2 }, '#f3dcc0', { life: 0.5, size: 0.45, grow: 1.4, alpha: 0.13 });
+    const wl = kart.wheelWorld(0, fxA), wr = kart.wheelWorld(1, fxB);
+    if (G.combo >= 25) {
+      // rainbow ribbon from both rear tyres
+      const hue = ((now / 6) % 360) / 360;
+      for (const w of [wl, wr]) for (let j = 0; j < 2; j++) {
+        tmpV.copy(w).addScaledVector(kv, -dt * 0.5 * j); tmpV.y += 0.12;
+        particles.spawn(tmpV, fxVel.copy(kv).multiplyScalar(0.78), trailCol.setHSL(hue, 0.95, 0.6), { kind: 'glow', life: 0.42, size: 0.42, end: 0.3, grav: 0, drag: 0, hdr: 2.2, alpha: 0.8, fadeIn: 0.02 });
+      }
+    } else if (G.combo >= 10 && Math.random() < 0.55) {
+      tmpV.copy(Math.random() < 0.5 ? wl : wr); tmpV.y += 0.25 + Math.random() * 0.4;
+      fxVel.copy(kv).multiplyScalar(0.8); fxVel.y += 0.6 + Math.random() * 0.8; fxVel.x += (Math.random() - 0.5) * 1.2;
+      particles.spawn(tmpV, fxVel, Math.random() < 0.5 ? '#ffffff' : '#ffe680', { kind: 'star', life: 0.45, size: 0.32, grav: -2, drag: 0 });
+    }
+    if (boostK > 0.3) {
+      // blue-white streaks off the exhausts
+      for (let i = 0; i < 2; i++) {
+        if (Math.random() < 0.4) continue;
+        kart.exhaustWorld(i, tmpV);
+        fxVel.copy(kv).multiplyScalar(0.55); fxVel.x += (Math.random() - 0.5) * 1.5; fxVel.y += Math.random() * 1.2;
+        particles.spawn(tmpV, fxVel, Math.random() < 0.5 ? '#4ad8ff' : '#e8f8ff', { kind: 'streak', life: 0.14, size: 0.11 * boostK, grav: 0, drag: 0, alpha: 0.75 });
+      }
+    }
+    // drift sparks + a little warm dust from the outer rear tyre when steering hard
+    const hard = !air && Math.abs(G.kartVel) > 2.2 && Math.abs(G.steer) > 0.6;
+    if (hard) {
+      const w = (G.kartVel > 0 ? wl : wr), side = G.kartVel > 0 ? -1 : 1;
+      w.x += fr.ux * 0.18; w.y += fr.uy * 0.18; w.z += fr.uz * 0.18; // just above the tarmac (sparks under the road are invisible)
+      for (let i = 0; i < 2; i++) {
+        fxVel.copy(kv).multiplyScalar(0.8);
+        fxVel.y += 2 + Math.random() * 2.5;
+        fxVel.x += side * (0.5 + Math.random() * 1.5) * fr.rx; fxVel.z += side * (0.5 + Math.random() * 1.5) * fr.rz;
+        particles.spawn(w, fxVel, boostK > 0.3 ? (Math.random() < 0.5 ? '#6fd8ff' : '#ffffff') : (Math.random() < 0.5 ? '#ff8a1a' : '#ffd23a'), { kind: 'streak', life: 0.16 + Math.random() * 0.1, size: 0.17, grav: -10, drag: 0, alpha: 1, hdr: 2.4 });
+      }
+      if (Math.random() < 0.5) particles.spawn(w, fxVel.copy(kv).multiplyScalar(0.92), boostK > 0.3 ? '#9fe6ff' : '#ffd36a', { kind: 'star', life: 0.12, size: 0.42, grav: 0, drag: 0, hdr: 2.6 });
+      if (Math.random() < 0.35) {
+        fxVel.copy(kv).multiplyScalar(0.7); fxVel.y += 0.4 + Math.random() * 0.4;
+        smoke.spawn(w, fxVel, '#eadfcf', { life: 0.6, size: 0.9, grow: 1.5, alpha: 0.16, base: dustBase.copy(fxVel).multiplyScalar(0.95) });
+      }
     }
     if (G.wasAir && !air) {
-      // compact touchdown puffs at the rear wheels
-      for (const sx of [-1.3 * KART_SCALE, 1.3 * KART_SCALE]) {
-        const wp = track.worldPos(kartZ + 0.5 * KART_SCALE, G.kartX + sx / LANE, 0.2, tmpV);
-        smoke.puff(wp, '#f0e6d8', 7, { speed: 4, size: 1.0, grow: 2.2, alpha: 0.4, life: 0.7, up: 1 });
-      }
+      // compact touchdown puffs at the rear wheels (≈ 1 kart width each)
+      const kv2 = kv.clone().multiplyScalar(0.75);
+      for (const w of [wl, wr]) smoke.puff(w, '#f0e6d8', 5, { speed: 2.5, size: 1.5, grow: 1.6, alpha: 0.3, life: 0.75, up: 0.8, carry: kv2 });
       camState.shake = Math.max(camState.shake, 0.6);
       sfx.play('whoosh');
       hud.announce('NAILED THE LANDING', 1100);
     }
     G.wasAir = air;
   }
-  smoke.update(dt);
+  lastKartPos.copy(kart.root.position);
+  particles.update(paused ? 0 : dt, camera.position); // photo mode freezes the effects
+  smoke.update(paused ? 0 : dt);
 
   // camera
   updateCamera(dt, kartZ, t, boostK, now);
@@ -925,6 +989,7 @@ function frame(now) {
   rivals.update(t, kartZ, G.kartX, dt, { visible: mode === 'RACE' && !G.launched, playerFeatures: track.course.featuresAt(kartZ) });
   R.update(pos, now / 1000);
 
+  R.setSpeedFx?.(mode === 'RACE' && !paused ? boostK : 0);
   hud.drawFx(dt, mode === 'RACE' ? boostK : 0, '255,255,255');
   R.render();
 
@@ -937,6 +1002,7 @@ function frame(now) {
 }
 
 const frameTmp = {}, frameTmp2 = {}, camFr = {};
+const trailCol = new THREE.Color(), trailKv = new THREE.Vector3(), dustBase = new THREE.Vector3(), lastKartPos = new THREE.Vector3();
 const basisR = new THREE.Vector3(), basisU = new THREE.Vector3(), basisB = new THREE.Vector3();
 const basisM = new THREE.Matrix4(), kartQuat = new THREE.Quaternion();
 
