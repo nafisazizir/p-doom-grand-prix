@@ -881,6 +881,55 @@ export class Track {
     return g;
   }
 
+  /**
+   * Idle-time prewarm: walk every section's layout (layouts are pure) and pre-build one copy of each prop kind and
+   * billboard into its pool, compiling its shaders in parallel, starting from `fromZ`. The first sight of a theme's
+   * scenery then only pops pooled objects instead of building canvases/merged geometry mid-race (up to ~100 ms each).
+   */
+  prewarm(fromZ = 0) {
+    const C = this.course, todo = [], seen = new Set();
+    const order = this.sections.map((sec, i) => i).sort((a, b) => (this.secZ[a] < fromZ - 400) - (this.secZ[b] < fromZ - 400) || this.secZ[a] - this.secZ[b]);
+    for (const i of order) {
+      const sec = this.sections[i], th = getTheme(sec.theme);
+      const z0 = i === 0 ? C.s0 : this.secZ[i], z1 = i === this.sections.length - 1 ? C.s1 : this.secZ[i + 1];
+      for (let zf = z0; zf < z1; zf += th.spacing || 10) {
+        const rng = makeRng(hashSeed(sec.id, Math.round(zf)));
+        let list = [];
+        try { list = th.layout ? th.layout(zf, rng, sec) : []; } catch { list = []; }
+        for (const p of list) {
+          const key = th.id + ':' + p.kind;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          todo.push({ key, make: p.make || (() => th.makeProp(p.kind)) });
+        }
+      }
+      for (const text of th.billboards || []) {
+        const key = th.id + ':__bb:' + text;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        todo.push({ key, make: () => billboard(text, { ...(th.billboardStyle || {}), postH: (th.billboardStyle?.postH || 3) + 1 }) });
+      }
+    }
+    const ric = globalThis.requestIdleCallback || ((f) => setTimeout(() => f({ didTimeout: true, timeRemaining: () => 6 }), 16));
+    const r = this.R?.renderer;
+    const step = (dl) => {
+      let budget = dl.didTimeout ? 1 : 64;
+      while (todo.length && budget-- > 0 && (dl.didTimeout || dl.timeRemaining() > 5)) {
+        const { key, make } = todo.shift();
+        if (this.pools.get(key)?.length || this.active.some((a) => a.key === key)) continue;
+        let obj = null;
+        try { obj = make(); } catch (e) { console.warn('prewarm', key, e); }
+        if (!obj) continue;
+        obj.traverse((o) => { if (o.isMesh) { const m = o.material; o.castShadow = !!m && !m.transparent && !m.isMeshBasicMaterial && !m.isShaderMaterial; o.receiveShadow = true; } });
+        if (!this.pools.has(key)) this.pools.set(key, []);
+        this.pools.get(key).push(obj);
+        if (r?.compileAsync) r.compileAsync(obj, this.R.camera, this.scene).catch(() => {});
+      }
+      if (todo.length) ric(step, { timeout: 400 });
+    };
+    ric(step, { timeout: 400 });
+  }
+
   reset(kartZ) {
     for (const a of this.active) this.scene.remove(a.obj);
     this.active.length = 0;

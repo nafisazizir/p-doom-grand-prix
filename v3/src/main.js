@@ -74,6 +74,21 @@ const G = (globalThis.GAME = {
 });
 
 // ---------------- boot ----------------
+/** Rasterize every emoji / symbol the scenery uses once at boot: the first canvas draw of such a glyph makes Chrome
+ *  load a fallback font (~50–150 ms), which used to land mid-race when a theme's props first spawned. */
+async function prewarmGlyphs() {
+  const files = ['themes/garage.js', 'themes/chatbot.js', 'themes/shoggoth.js', 'themes/datacenter.js', 'themes/latent.js', 'themes/badlands.js',
+    'themes/paperclip.js', 'themes/stadium.js', 'themes/takeoff.js', 'hazards.js', 'entities.js', 'rivals.js', 'track.js'];
+  try {
+    const texts = await Promise.all(files.map((f) => fetch(new URL('./' + f, import.meta.url)).then((r) => r.text()).catch(() => '')));
+    const chars = [...new Set([...texts.join('')].filter((ch) => ch.codePointAt(0) > 0x2000))].join('');
+    const c = document.createElement('canvas');
+    c.width = 1024; c.height = 64;
+    const g = c.getContext('2d');
+    for (const w of [500, 600, 700]) for (let i = 0; i < chars.length; i += 40) { g.font = `${w} 40px Fredoka, 'Baloo 2', sans-serif`; g.fillText(chars.slice(i, i + 40), 0, 48); }
+  } catch { /* best effort */ }
+}
+
 async function boot() {
   hud.init();
   input.init();
@@ -96,6 +111,7 @@ async function boot() {
   }
   window.__bootStep = "renderer"; setupRenderer(); window.__bootStep = "envs";
   await Promise.all([R.loadEnvs(getManifest(), ROOT), preloadModels(Object.assign({}, ...Object.values(THEMES).map((t) => t.models || {})))]);
+  window.__bootStep = "glyphs"; await prewarmGlyphs();
   window.__bootStep = "track";
   track = new Track(scene, sections, R);
   kart = new Kart(scene);
@@ -109,6 +125,8 @@ async function boot() {
   window.__bootStep = "debug"; debug.init({ getInfo: debugInfo, setSfx: (v) => audio.setSfxVolume(v) });
   window.__bootStep = "screens"; setupScreens(); window.__bootStep = "done";
   requestAnimationFrame(frame);
+  const sp = params.get('section');
+  track.prewarm(sp ? sections[clamp(parseInt(sp, 10) - 1, 0, sections.length - 1)].start * SPEED : 0);
 
   const startSec = params.get('section');
   if (startSec) {
