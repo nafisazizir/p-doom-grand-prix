@@ -5,13 +5,16 @@ import { toon, glow, G, mesh, billboard, textPanel, makeRng, hashSeed, clamp, sm
 import { getTheme } from './themes/index.js';
 import { Course, SPEED, ROAD_HALF, LANE, V2_ROAD_HALF } from './course.js';
 import { lookFor } from './looks.js';
-import { surface, WATER, textureAt, cloneTex } from './textures.js';
+import { surface, WATER, textureAt, cloneTex, detailMaterial, roadGainFor } from './textures.js';
 
 export { SPEED, ROAD_HALF, LANE };
 export const FAR = 330;
 const BEHIND = 30;
 const H = ROAD_HALF;
 const TUNNEL_W = H + 10;
+// MK proportions (PLAN-V3): kerbs 0.5–2 kw wide, lane dashes 0.1–0.2 kw wide, ≈10 kw long with ≈10 kw gaps
+const KERB_W = 1.6, KERB_H = 0.2;
+const DASH = 16, DASH_W = 0.26, EDGE_IN = H - 0.62, EDGE_OUT = H - 0.34;
 
 // ---------- noise ----------
 function hash2(x, y) { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); }
@@ -129,17 +132,17 @@ export class Track {
       return f.y + 19 * (1 - u * u) + this._hills(s, lat, lookFor(this.themeAtZ(s))) * u;
     }
     const a = Math.abs(lat);
-    const emb = a <= H + 1.2 ? 0.05 : -0.25;
+    const emb = a <= H + KERB_W + 0.1 ? -0.03 : -0.25;
     // match the banked road edge, fading back to level ground further out
-    const edge = Math.sign(lat) * Math.min(a, H + 1.3);
+    const edge = Math.sign(lat) * Math.min(a, H + KERB_W);
     const bankY = f.ry * edge * (a <= H + 4 ? 1 : Math.max(0, 1 - (a - H - 4) / 30));
     return f.y + bankY + emb + this._hills(s, lat, look);
   }
 
   // ---------- static geometry ----------
-  _sweep(sA, sB, step, profile, material, { frame = 'road', name = '', skip = null, shadow = true } = {}) {
+  _sweep(sA, sB, step, profile, material, { frame = 'road', name = '', skip = null, shadow = true, latAttr = false } = {}) {
     // profile(s) → [[lat, h], ...] (same length every row). Returns a Mesh, or null if empty.
-    const pos = [], uv = [], idx = [];
+    const pos = [], uv = [], idx = [], lats = [];
     let rows = 0, cols = 0;
     const fr = {};
     let prevRowOk = false;
@@ -163,6 +166,7 @@ export class Track {
           u += Math.hypot(lat - pl, (frame === 'road' ? h - ph : h - ph));
         } else u = lat;
         uv.push(u, s);
+        if (latAttr) lats.push(lat);
       }
       if (prevRowOk) {
         const r1 = rows - 1, r2 = rows;
@@ -178,6 +182,7 @@ export class Track {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    if (latAttr) g.setAttribute('aLat', new THREE.Float32BufferAttribute(lats, 1));
     g.setIndex(idx);
     g.computeVertexNormals();
     g.computeBoundingSphere();
@@ -201,28 +206,30 @@ export class Track {
       const sB = i === sections.length - 1 ? C.s1 - 2 : sections[i + 1].start * SPEED + 0.01;
       // road (rainbow road where flagged)
       const isRainbow = (s) => !!C.featuresAt(s).rainbow;
-      const roadMat = surface(look.road?.tex || 'asphalt', { tint: look.road?.tint || '#8a8a96', scale: look.road?.scale || 6, normalScale: 0.8 });
+      const roadMat = this._roadMat(look);
       const rainbow = surface('rainbow');
       const roadProf = () => [[-H, 0], [-H / 2, 0], [0, 0], [H / 2, 0], [H, 0]];
       this._sweep(sA, sB, 2, roadProf, roadMat, { name: 'road', skip: (s) => jumpSkip(s) || isRainbow(s), shadow: false });
       this._sweep(sA, sB, 2, roadProf, rainbow, { name: 'rainbow', skip: (s) => jumpSkip(s) || !isRainbow(s), shadow: false });
-      // lane markings (dashed centre) as a thin emissive-ish strip
-      const lineMat = toon('#bfbab0', { roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -2 });
-      this._sweep(sA, sB, 2, () => [[-0.18, 0.02], [0.18, 0.02]], lineMat, { name: 'line', shadow: false, skip: (s) => jumpSkip(s) || isRainbow(s) || Math.floor(s / 6) % 2 === 1 });
+      // lane markings: MK-proportioned dashed centre line + solid edge lines, slightly worn paint
+      const lineMat = this._lineMat();
+      this._sweep(sA, sB, 2, () => [[-DASH_W / 2, 0.02], [DASH_W / 2, 0.02]], lineMat, { name: 'line', shadow: false, skip: (s) => jumpSkip(s) || isRainbow(s) || Math.floor(s / DASH) % 2 === 1 || s >= sB - 0.5 });
       for (const side of [-1, 1]) {
-        this._sweep(sA, sB, 2, () => [[side * (H - 0.6), 0.02], [side * (H - 0.35), 0.02]], lineMat, { name: 'edge', shadow: false, skip: (s) => jumpSkip(s) || isRainbow(s) });
+        this._sweep(sA, sB, 2, () => (side < 0 ? [[-EDGE_OUT, 0.02], [-EDGE_IN, 0.02]] : [[EDGE_IN, 0.02], [EDGE_OUT, 0.02]]), lineMat, { name: 'edge', shadow: false, skip: (s) => jumpSkip(s) || isRainbow(s) });
       }
-      // kerbs (raised, striped) or glowing rails on rainbow road
+      // kerbs (bold, rounded, striped) or glowing rails on rainbow road
       const kerbMat = this._kerbMat(look);
+      const kerbRow = KERB_PROFILE;
       for (const side of [-1, 1]) {
-        const prof = () => (side < 0 ? [[-H - 1.3, 0.02], [-H - 1.1, 0.16], [-H, 0.12]] : [[H, 0.12], [H + 1.1, 0.16], [H + 1.3, 0.02]]);
-        this._sweep(sA, sB, 2, prof, kerbMat, { name: 'kerb', shadow: false, skip: (s) => jumpSkip(s) || isRainbow(s) || !!C.featuresAt(s).bridge || !!C.featuresAt(s).highway });
+        const kp = kerbRow.map(([t, h]) => [side * (H + t * KERB_W), h]);
+        if (side < 0) kp.reverse();
+        this._sweep(sA, sB, 2, () => kp, kerbMat, { name: 'kerb', shadow: false, skip: (s) => jumpSkip(s) || isRainbow(s) || !!C.featuresAt(s).bridge || !!C.featuresAt(s).highway });
         const railProf = () => [[side * (H + 0.2), 0.0], [side * (H + 0.2), 0.9]];
         this._sweep(sA, sB, 2, railProf, glow(side < 0 ? '#3fd7ff' : '#ff4fd8', { side: THREE.DoubleSide, intensity: 3 }), { name: 'rainbowRail', shadow: false, skip: (s) => jumpSkip(s) || !isRainbow(s) });
       }
       // terrain
-      const groundMat = surface(look.ground?.tex || 'grass', { tint: look.ground?.tint || '#8fc070', scale: look.ground?.scale || 6 });
-      const lats = [H + 1.3, H + 4, H + 10, H + 22, H + 45, H + 90, H + 160, H + 300];
+      const groundMat = this._groundMat(look);
+      const lats = [H + KERB_W, H + 4, H + 10, H + 22, H + 45, H + 90, H + 160, H + 300];
       for (const side of [-1, 1]) {
         const prof = (s) => {
           const out = [];
@@ -239,44 +246,71 @@ export class Track {
           }
           return side < 0 ? out.reverse() : out;
         };
-        this._sweep(sA, sB, 4, prof, groundMat, { frame: 'level', name: 'terrain', shadow: false });
+        this._sweep(sA, sB, 4, prof, groundMat, { frame: 'level', name: 'terrain', shadow: false, latAttr: true });
         // shore/ground under bridges & highways
         const prof2 = (s) => {
           const m = this._mode(s);
           if (m.kind === 'highway') {
             const out = [];
-            for (const a of [0, H + 1.3]) { const lat = side * a; out.push([lat, this.terrainY(s, lat) ?? 0]); }
+            for (const a of [0, H + KERB_W]) { const lat = side * a; out.push([lat, this.terrainY(s, lat) ?? 0]); }
             return side < 0 ? out.reverse() : out;
           }
           if (m.kind !== 'water') return null;
-          const out = [];
+          const out = [[side * 36, this._groundBase(s, m.f.bridge) - 1.5]];
           for (const a of [45, 90, 160, 300]) { const lat = side * a; out.push([lat, this.terrainY(s, lat)]); }
           return side < 0 ? out.reverse() : out;
         };
-        this._sweep(sA, sB, 4, prof2, groundMat, { frame: 'level', name: 'shore', shadow: false });
+        this._sweep(sA, sB, 4, prof2, groundMat, { frame: 'level', name: 'shore', shadow: false, latAttr: true });
         // cliff face
       }
     }
     this._buildFeatures();
   }
 
+  _roadMat(look) {
+    const slot = look.road?.tex || 'asphalt';
+    const key = JSON.stringify([slot, look.road?.tint, look.road?.scale]);
+    this._roadMats ||= {};
+    if (this._roadMats[key]) return this._roadMats[key];
+    const base = surface(slot, { tint: look.road?.tint || '#8a8a96', scale: look.road?.scale || 6, normalScale: 0.8 });
+    const asphalt = slot === 'asphalt';
+    return (this._roadMats[key] = detailMaterial(base, {
+      gain: (look.road?.gain ?? 1) * roadGainFor(slot), antiTile: asphalt ? 0.85 : 0.5,
+      streak: asphalt ? 1 : 0.7, crack: asphalt ? 1 : slot === 'paving' ? 0.4 : 0.15, patch: asphalt ? 1 : 0, macro: 1,
+    }));
+  }
+  _lineMat() {
+    return (this._lineMatC ||= detailMaterial(toon('#e9e5da', { roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), { streak: 0.6, crack: 1, patch: 0.4, macro: 0.5, wear: 0.75 }));
+  }
+  _groundMat(look) {
+    const key = JSON.stringify([look.ground?.tex, look.ground?.tint, look.ground?.scale, look.verge]);
+    this._groundMats ||= {};
+    if (this._groundMats[key]) return this._groundMats[key];
+    const base = surface(look.ground?.tex || 'grass', { tint: look.ground?.tint || '#8fc070', scale: look.ground?.scale || 6 });
+    // verge: the ground next to the kerb is worn to dirt (MK), darker version of the ground tint by default
+    const vt = new THREE.Color(look.verge || look.ground?.tint || '#8fc070').multiply(_vergeMul);
+    return (this._groundMats[key] = detailMaterial(base, { streak: 0, crack: 0, patch: 0, macro: 0.7, antiTile: 0.9, verge: { tint: '#' + vt.getHexString() } }));
+  }
+
   _kerbMat(look) {
     if (!this._kerbTex) {
+      // smooth-edged stripes (8 world units per red+white pair), slightly rounded colour transitions
       const c = document.createElement('canvas');
-      c.width = 8; c.height = 64;
+      c.width = 4; c.height = 256;
       const g = c.getContext('2d');
-      g.fillStyle = '#f4f1ea'; g.fillRect(0, 0, 8, 64);
-      g.fillStyle = '#e8324a'; g.fillRect(0, 0, 8, 32);
+      const gr = g.createLinearGradient(0, 0, 0, 256);
+      gr.addColorStop(0, '#f6f2ea'); gr.addColorStop(0.47, '#f6f2ea'); gr.addColorStop(0.5, '#e02a40'); gr.addColorStop(0.97, '#e02a40'); gr.addColorStop(1, '#f6f2ea');
+      g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
       const t = new THREE.CanvasTexture(c);
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.magFilter = THREE.NearestFilter;
       t.colorSpace = THREE.SRGBColorSpace;
-      t.repeat.set(1, 1 / 5);
+      t.repeat.set(1, 1 / 8);
+      t.anisotropy = 8;
       this._kerbTex = t;
     }
     const key = look.kerb || 'std';
     this._kerbMats ||= {};
-    return (this._kerbMats[key] ||= new THREE.MeshStandardMaterial({ map: this._kerbTex, roughness: 0.55, color: look.kerb || '#ffffff' }));
+    return (this._kerbMats[key] ||= detailMaterial(new THREE.MeshStandardMaterial({ map: this._kerbTex, roughness: 0.42, color: look.kerb || '#ffffff' }), { streak: 0.5, crack: 0.3, patch: 0, macro: 0.35 }));
   }
 
   _buildFeatures() {
@@ -428,7 +462,7 @@ export class Track {
     if (shell) { shell.material = shell.material.clone(); shell.material.side = THREE.DoubleSide; }
     // floor between the road and the walls
     const floor = toon(f.fire ? '#2a1a18' : '#1c2830', { roughness: 0.6, metalness: 0.3 });
-    for (const side of [-1, 1]) this._sweep(sA, sB, 3, () => (side < 0 ? [[-W, -0.2], [-H - 1.3, 0.02]] : [[H + 1.3, 0.02], [W, -0.2]]), floor, { name: 'tfloor', shadow: false });
+    for (const side of [-1, 1]) this._sweep(sA, sB, 3, () => (side < 0 ? [[-W, -0.2], [-H - KERB_W, -0.02]] : [[H + KERB_W, -0.02], [W, -0.2]]), floor, { name: 'tfloor', shadow: false });
     // ceiling light strips
     const lights = [];
     for (let s = sA + 6; s < sB; s += 9) lights.push(s);
@@ -460,22 +494,86 @@ export class Track {
     }
     const span = Math.hypot(maxx - minx, maxz - minz);
     const radius = f.type === 'cliff' ? span / 2 + 520 : span / 2 + 95;
-    const w = radius * 2, d = radius * 2;
     const y = f.type === 'cliff' ? miny - 48 : this._groundBase(sA, f) + 1;
     const nm = WATER() ? textureAt(WATER(), false) : null;
     const sea = f.water === 'sea';
+    const cliffSea = f.type === 'cliff';
     const mat = new THREE.MeshStandardMaterial({
-      color: sea ? '#1f7fa8' : '#6a2a9a', roughness: 0.06, metalness: 0.1, transparent: true, opacity: sea ? 0.92 : 0.88,
-      emissive: sea ? '#03202c' : '#4a0a7a', emissiveIntensity: sea ? 0.4 : 1.2,
-      normalMap: nm ? cloneTex(nm) : null, normalScale: new THREE.Vector2(0.6, 0.6),
+      color: sea ? '#0c6e9c' : '#6a2a9a', roughness: 0.07, metalness: 0.0, transparent: true, opacity: sea ? 0.96 : 0.9,
+      emissive: sea ? '#04425e' : '#4a0a7a', emissiveIntensity: sea ? 0.55 : 1.2,
+      normalMap: nm ? cloneTex(nm) : null, normalScale: new THREE.Vector2(0.45, 0.45), envMapIntensity: cliffSea ? 0.55 : 0.85,
     });
-    if (mat.normalMap) mat.normalMap.repeat.set(w / 40, d / 40);
-    const plane = new THREE.Mesh(new THREE.CircleGeometry(radius, 64), mat);
+    // the sea sits far below / away: lighter aerial perspective so it still reads as water (sun glitter, blue body)
+    mat.defines = { HAZE_K: cliffSea ? '0.3' : '0.7' };
+    // two scrolling normal layers at different scales/directions: no visible tiling, smoother MK water
+    const wt = { value: 0 };
+    if (mat.normalMap) {
+      mat.normalMap.repeat.set(1, 1);
+      mat.onBeforeCompile = (sh) => {
+        sh.uniforms.wTime = wt;
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vWPos;').replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xz;');
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float wTime;\nvarying vec2 vWPos;')
+          .replace('#include <normal_fragment_maps>', `
+            vec2 wq = vWPos / 38.0;
+            vec3 wn1 = texture2D(normalMap, wq + vec2(wTime * 0.011, wTime * 0.007)).xyz * 2.0 - 1.0;
+            vec3 wn2 = texture2D(normalMap, wq * 0.37 * mat2(0.8, -0.6, 0.6, 0.8) - vec2(wTime * 0.006, -wTime * 0.009)).xyz * 2.0 - 1.0;
+            vec3 wn3 = texture2D(normalMap, wq * 2.3 + vec2(-wTime * 0.02, wTime * 0.017)).xyz * 2.0 - 1.0;
+            vec3 mapN = normalize(vec3((wn1.xy + wn2.xy * 0.8 + wn3.xy * 0.35) * normalScale, 1.0));
+            normal = normalize( tbn * mapN );`);
+      };
+      mat.customProgramCacheKey = () => 'waterV3' + (cliffSea ? 'c' : '');
+    }
+    const plane = new THREE.Mesh(new THREE.CircleGeometry(radius, 96), mat);
     plane.rotation.x = -Math.PI / 2;
     plane.position.set((minx + maxx) / 2, y, (minz + maxz) / 2);
     plane.receiveShadow = true;
+    plane.userData.wTime = wt;
     this.static.add(plane);
     this.waters.push(plane);
+    // shore foam: a soft band on the water just off the shoreline (terrain hides the half that is on land)
+    if (f.type === 'cliff') this._foam(sA, sB, f.side, H + 3.5, H + 17, y, true);
+    else for (const side of [-1, 1]) this._foam(sA, sB, side, 33, 47, y, false);
+  }
+
+  _foam(sA, sB, side, latA, latB, y, inward) {
+    if (!this._foamTex) {
+      const c = document.createElement('canvas');
+      c.width = 128; c.height = 512;
+      const g = c.getContext('2d');
+      g.fillStyle = '#000'; g.fillRect(0, 0, 128, 512);
+      let seed = 99;
+      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+      for (let i = 0; i < 900; i++) {
+        const x = Math.pow(rnd(), 0.6) * 128, yy = rnd() * 512, r = 1.5 + rnd() * 5 * (x / 128);
+        g.fillStyle = `rgba(255,255,255,${0.15 + 0.6 * (x / 128) * rnd()})`;
+        for (const o of [-512, 0, 512]) { g.beginPath(); g.ellipse(x, yy + o, r, r * 2.2, 0, 0, Math.PI * 2); g.fill(); }
+      }
+      const grd = g.createLinearGradient(0, 0, 128, 0);
+      grd.addColorStop(0, 'rgba(255,255,255,0)'); grd.addColorStop(0.85, 'rgba(255,255,255,0.35)'); grd.addColorStop(1, 'rgba(255,255,255,0.7)');
+      g.globalCompositeOperation = 'lighter'; g.fillStyle = grd; g.fillRect(0, 0, 128, 512);
+      const t = new THREE.CanvasTexture(c);
+      t.wrapS = THREE.ClampToEdgeWrapping; t.wrapT = THREE.RepeatWrapping;
+      this._foamTex = t;
+    }
+    const t = this._foamTex.clone();
+    // u along the band runs from the open water (0) to the shore (1)
+    const wide = latB - latA;
+    if (inward) { t.repeat.set(-1 / wide, 1 / 40); t.offset.set(latB / wide, 0); } else { t.repeat.set(1 / wide, 1 / 40); t.offset.set(-latA / wide, 0); }
+    const mat = new THREE.MeshBasicMaterial({ color: '#eaf8ff', alphaMap: t, transparent: true, depthWrite: false, opacity: 0.85, polygonOffset: true, polygonOffsetFactor: -2 });
+    mat.alphaMap.wrapT = THREE.RepeatWrapping;
+    // uv.x = |lat| along the band: sweep with a profile from latA to latB (u starts at the first column's lat)
+    const prof = () => { const pts = [[side * latA, y + 0.06], [side * (latA + latB) / 2, y + 0.06], [side * latB, y + 0.06]]; return side < 0 ? pts.reverse() : pts; };
+    const m = this._sweep(sA - 30, sB + 30, 4, prof, mat, { frame: 'level', name: 'foam', shadow: false });
+    if (m) {
+      // u from _sweep starts at the first lat (negative on the left): remap to |lat|
+      const uv = m.geometry.attributes.uv;
+      for (let k = 0; k < uv.count; k++) uv.setX(k, Math.abs(uv.getX(k)));
+      m.receiveShadow = false;
+      m.renderOrder = 1;
+      m.userData.noAO = true;
+      this.foams ||= [];
+      this.foams.push(t);
+    }
   }
 
   _cliff(f, sA, sB) {
@@ -523,8 +621,19 @@ export class Track {
     const key = si + (feats.space ? 's' : '');
     if (key !== this.lookKey) {
       this.lookKey = key;
+      // far ridges: keep them off the open sea beside the clifftop (mask out the cliff side's half of the horizon)
+      const sec = this.sections[si];
+      const s0 = this.secZ[si], s1 = si + 1 < this.secZ.length ? this.secZ[si + 1] : this.course.s1;
+      let cliff = null;
+      for (const f of this.course.features) if (f.type === 'cliff' && f.s[0] < s1 && f.s[1] > s0) cliff = f;
+      if (cliff && look.far) {
+        const fm = this.course.frame((cliff.s[0] + cliff.s[1]) / 2, _fr);
+        look = { ...look, far: { ...look.far, mask: { dir: [Math.cos(fm.yaw) * cliff.side, Math.sin(fm.yaw) * cliff.side], width: 1.35 } } };
+      }
       this.R.applyLook(look, this.course.frame(kartZ, _fr).yaw, glide ? 1.8 : 0);
+      this.R.setFarBase?.(this._sectionBaseY(si));
       this.look = look;
+      void sec;
     }
     // redness for doom
     this.R.scene.fog.color.copy(this.R.fogBase).lerp(_red, redness * 0.35);
@@ -538,7 +647,8 @@ export class Track {
       this.landingSign.visible = d < 12;
     }
     // water ripples
-    for (const w of this.waters) if (w.material.normalMap) { w.material.normalMap.offset.x = t * 0.01; w.material.normalMap.offset.y = t * 0.013; }
+    for (const w of this.waters) w.userData.wTime.value = t;
+    if (this.foams) for (const ft of this.foams) ft.offset.y = Math.sin(t * 0.5) * 0.02 + t * 0.004;
 
     // recycle passed props
     for (let i = this.active.length - 1; i >= 0; i--) {
@@ -599,6 +709,18 @@ export class Track {
     this.pal.skyTop.set(look.fog?.color || '#ffffff');
   }
 
+  /** lowest road height in a section (far ridges + cloud bank sit relative to it) */
+  _sectionBaseY(si) {
+    this._baseY ||= new Map();
+    if (this._baseY.has(si)) return this._baseY.get(si);
+    const C = this.course;
+    const s0 = Math.max(C.s0, this.secZ[si]), s1 = Math.min(C.s1, si + 1 < this.secZ.length ? this.secZ[si + 1] : C.s1);
+    let y = 1e9;
+    for (let s = s0; s <= s1; s += 10) y = Math.min(y, C.frame(s, _frS).y);
+    this._baseY.set(si, y);
+    return y;
+  }
+
   _spawn(th, p, zf) {
     const C = this.course;
     let lat = p.x || 0;
@@ -649,11 +771,11 @@ export class Track {
     this.liveTex.colorSpace = THREE.SRGBColorSpace;
     const g = new THREE.Group();
     const pm = MAT.metal('#8a90a0');
-    for (const x of [-4.5, 4.5]) g.add(mesh(G.box(0.4, 6, 0.4), pm, x, 3, 0));
-    g.add(mesh(G.rbox(13, 6.8, 0.5, 0.15), MAT.paint('#1a1030'), 0, 9, -0.3));
-    const scr = new THREE.Mesh(G.plane(12.2, 6.1), new THREE.MeshBasicMaterial({ map: this.liveTex }));
+    for (const x of [-3.6, 3.6]) { g.add(mesh(G.cyl(0.24, 0.28, 5.4, 14), pm, x, 2.7, -0.3)); g.add(mesh(G.rbox(0.9, 0.5, 0.9, 0.15), pm, x, 0.25, -0.3)); }
+    g.add(mesh(G.rbox(11.2, 5.9, 0.5, 0.2), MAT.paint('#1a1030'), 0, 7.75, -0.3));
+    const scr = new THREE.Mesh(G.plane(10.5, 5.25), new THREE.MeshBasicMaterial({ map: this.liveTex }));
     scr.material.color.setScalar(1.25);
-    scr.position.set(0, 9, 0);
+    scr.position.set(0, 7.75, 0);
     g.add(scr);
     g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     this.liveBB = g;
@@ -691,32 +813,47 @@ export class Track {
   }
 
   _makeGate(i) {
+    // MK-scale start arch: chunky rounded pillars outside ±13 (clear of the kerbs), banner ≈ 15.5 up (≈ 8 kh)
     const sec = this.sections[i];
     const th = getTheme(sec.theme);
     const p = th.palette;
     const g = new THREE.Group();
-    const w = H * 2 + 5;
+    const fz = this.course.featuresAt(this.secZ[i]);
+    const deck = !!(fz.bridge || fz.highway);
+    const px = deck ? H + 2.3 : H + 3.9; // pillar centre ±14.4 (on a bridge deck: hug the deck edge)
+    const ph = 14; // pillar height
     const colA = p.accent1 || '#ff5ca8', colB = p.accent2 || '#ffd23f';
+    const paintA = MAT.paint(colA), metal = MAT.metal('#9aa0ac');
     for (const sx of [-1, 1]) {
-      const post = mesh(G.rbox(1.6, 11, 1.6, 0.4), MAT.paint(colA), sx * w / 2, 5.5, 0);
+      const post = mesh(G.rbox(2.3, ph + (deck ? 3 : 0), 2.3, 0.55), paintA, sx * px, (ph - (deck ? 3 : 0)) / 2, 0);
       post.castShadow = true;
       g.add(post);
-      g.add(mesh(G.cyl(1.3, 1.5, 0.6, 20), MAT.metal('#9aa0ac'), sx * w / 2, 0.3, 0));
+      if (!deck) g.add(mesh(G.rbox(3.2, 1.0, 3.2, 0.35), metal, sx * px, 0.5, 0)); // plinth
+      g.add(mesh(G.rbox(2.9, 0.7, 2.9, 0.3), metal, sx * px, ph + 0.1, 0)); // cap under the banner
+      g.add(mesh(G.rbox(2.5, 0.45, 2.5, 0.18), MAT.paint(colB), sx * px, 9.5, 0)); // band
     }
-    const beam = mesh(G.rbox(w + 3, 3.6, 1.4, 0.4), MAT.paint(colB), 0, 11.5, 0);
+    const bw = px * 2 + 3.2;
+    const beam = mesh(G.rbox(bw, 3.8, 1.6, 0.6), MAT.paint(colB), 0, ph + 2.2, 0);
     beam.castShadow = true;
     g.add(beam);
+    g.add(mesh(G.rbox(bw - 1.2, 0.5, 1.9, 0.2), paintA, 0, ph + 0.2, 0)); // trim strip
     const label = `TRACK ${i + 1}: ${th.title || sec.theme.toUpperCase()}`;
-    // wide panel → give the canvas a matching aspect + small padding (the default 512 px canvas left ~no room for text)
-    const pw = w - 1.8; // between the posts (which would otherwise cover the ends of the text)
+    const pw = px * 2 - 2.6; // between the pillars
     const panel = textPanel(label, { width: pw, height: 3.0, w: 2048, h: Math.round(2048 * 3.0 / pw), pad: 26, bg: colB, fg: '#2b1840', border: '#2b1840', borderW: 8, radius: 18 });
-    panel.position.set(0, 11.5, 0.86);
+    panel.position.set(0, ph + 2.2, 0.82);
     g.add(panel);
-    const lights = [];
-    for (let k = 0; k < 12; k++) {
-      const l = mesh(G.sphere(0.3, 10), glow(k % 2 ? '#ffffff' : colA, { intensity: 4 }), -w / 2 + (k + 0.5) * (w / 12), 13.6, 0.5);
-      lights.push(l); g.add(l);
-    }
+    const back = panel.clone();
+    back.rotation.y = Math.PI;
+    back.position.z = -0.82;
+    g.add(back);
+    // chaser bulbs: two instanced sets (even / odd) that blink alternately
+    const bulb = G.sphere(0.32, 12), n = 14, m4 = new THREE.Matrix4();
+    const lights = [0, 1].map((par) => {
+      const im = new THREE.InstancedMesh(bulb, glow(par ? '#ffffff' : colA, { intensity: 4 }), n / 2);
+      for (let k = par, j = 0; k < n; k += 2, j++) im.setMatrixAt(j, m4.makeTranslation(-bw / 2 + 0.8 + (k + 0.5) * ((bw - 1.6) / n), ph + 4.35, 0.5));
+      g.add(im);
+      return im;
+    });
     g.userData.lights = lights;
     const fr = this.course.frame(this.secZ[i], {});
     g.position.set(fr.x, fr.y, fr.z);
@@ -739,3 +876,11 @@ export class Track {
 const _fr = {}, _frT = {}, _frG = {}, _frC = {}, _frS = {};
 const _up = new THREE.Vector3(0, 1, 0);
 const _red = new THREE.Color('#ff2020');
+const _vergeMul = new THREE.Color(0.62, 0.52, 0.4);
+// rounded kerb cross-section: [t across 0..1 of KERB_W, height]; the last point tucks under the verge (no gap)
+const KERB_PROFILE = (() => {
+  const out = [];
+  for (const t of [0, 0.04, 0.1, 0.2, 0.35, 0.5, 0.65, 0.8, 0.9, 0.96, 1]) out.push([t, KERB_H * Math.sqrt(Math.max(0, 1 - Math.pow(2 * t - 1, 6))) + 0.005]);
+  out.push([1.04, -0.32]);
+  return out;
+})();

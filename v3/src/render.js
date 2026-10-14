@@ -1,20 +1,22 @@
-// v2 renderer: PBR + image-based lighting, soft sun shadows that follow the kart, physical skies,
-// HDR post (GTAO ambient occlusion, bloom, neutral tone mapping). Quality presets keep 60 fps.
+// v3 renderer: PBR + image-based lighting, crisp sun shadows that follow the view, MK-style skies (gradient + lit
+// cumulus + far ridges, see sky.js), aerial-perspective haze on every material, HDR post (GTAO, bloom) and a final
+// grade pass (MK high-key grade, vignette, dither, radial speed blur). Quality presets keep 60 fps.
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { Sky } from 'three/addons/objects/Sky.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { HAZE, installHaze, makeDaySky, makeNightDome, Clouds, FarRidges, GradePass } from './sky.js';
+
+installHaze(); // must run before any material compiles
 
 const QUALITY = {
   ultra: { ratio: 2, shadow: 4096, ao: true, bloom: true },
   high: { ratio: 1.5, shadow: 4096, ao: true, bloom: true },
   med: { ratio: 1.25, shadow: 2048, ao: false, bloom: true },
-  low: { ratio: 1, shadow: 1024, ao: false, bloom: false },
+  low: { ratio: 1, shadow: 2048, ao: false, bloom: false },
 };
 
 const QP = new URLSearchParams(location.search);
@@ -24,8 +26,49 @@ export const GRADE = {
   bloomThr: +((QP.get('bloom') || '').split(',')[0] || 1.7),
   bloomStr: +((QP.get('bloom') || '').split(',')[1] || 0.3),
   envK: +(QP.get('envk') || 0.75),
-  fogK: +(QP.get('fogk') || 0.6),
+  fogK: +(QP.get('fogk') || 1),
+  grade: QP.get('nograde') === null,
 };
+
+// per sky-type defaults for the v3 atmosphere fields (looks can override any of them)
+const SKY_DEFAULTS = {
+  day: {
+    sky: { zenith: '#0e66d2', mid: '#39a4ec', band: 9, glow: 0.45, disc: 14, cirrus: 0.3 },
+    haze: { gain: 1.18, k: 1.35, desat: 0.32, sun: 0.4, height: 170, start: 14 },
+    cloud: { lit: 1.7, shade: '#93aed6', shadeK: 0.95, haze: 0.28 },
+    grade: { sat: 1.13, contrast: 0.14, warm: 0.5, vignette: 0.16 },
+  },
+  sunset: {
+    sky: { zenith: '#3550a8', mid: '#d58aa6', band: 4.2, glow: 1.0, disc: 10, cirrus: 0.35 },
+    haze: { gain: 1.08, k: 1.25, desat: 0.25, sun: 0.85, height: 170, start: 14 },
+    cloud: { lit: 1.75, shade: '#b48aa6', shadeK: 0.85, haze: 0.2 },
+    grade: { sat: 1.1, contrast: 0.12, warm: 0.7, vignette: 0.18 },
+  },
+  dusk: {
+    sky: { zenith: '#25306e', mid: '#b56290', band: 4.0, glow: 0.9, disc: 8, cirrus: 0.3 },
+    haze: { gain: 1.05, k: 1.2, desat: 0.25, sun: 0.8, height: 170, start: 14 },
+    cloud: { lit: 1.6, shade: '#90709e', shadeK: 0.8, haze: 0.24 },
+    grade: { sat: 1.08, contrast: 0.12, warm: 0.6, vignette: 0.2 },
+  },
+  night: {
+    dome: { aurora: 0.7, band: 7 },
+    haze: { gain: 1.0, k: 0.95, desat: 0.2, sun: 0.15, height: 140, start: 10 },
+    grade: { sat: 1.1, contrast: 0.12, warm: 0.15, vignette: 0.22 },
+  },
+  space: {
+    dome: { aurora: 0, band: 9 },
+    haze: { gain: 1.0, k: 0.8, desat: 0.1, sun: 0.1, height: 400, start: 20 },
+    grade: { sat: 1.1, contrast: 0.12, warm: 0.15, vignette: 0.2 },
+  },
+  indoor: {
+    dome: { aurora: 0, band: 6 },
+    haze: { gain: 1.0, k: 0.9, desat: 0.2, sun: 0.1, height: 200, start: 6 },
+    grade: { sat: 1.08, contrast: 0.12, warm: 0.2, vignette: 0.22 },
+  },
+};
+
+const _c = new THREE.Color(), _c2 = new THREE.Color();
+const _v = new THREE.Vector3(), _fwd = new THREE.Vector3(), _lr = new THREE.Vector3(), _lu = new THREE.Vector3();
 
 export class Renderer {
   constructor(canvas, quality = 'high') {
@@ -44,36 +87,35 @@ export class Renderer {
     this.scene.environment = this.fallbackEnv;
     this.scene.environmentIntensity = 1;
 
-    // lights
+    // lights. The shadow box is tight around what the chase camera sees (kart is half size in v3), texel-snapped.
     this.sun = new THREE.DirectionalLight(0xffffff, 3);
     this.sun.castShadow = true;
     const sc = this.sun.shadow.camera;
-    sc.left = -55; sc.right = 55; sc.top = 55; sc.bottom = -55; sc.near = 1; sc.far = 400;
-    this.sun.shadow.bias = -0.0003;
-    this.sun.shadow.normalBias = 0.05;
-    this.sun.shadow.radius = 3;
+    this.shadowHalf = 46;
+    sc.left = -this.shadowHalf; sc.right = this.shadowHalf; sc.top = this.shadowHalf; sc.bottom = -this.shadowHalf; sc.near = 1; sc.far = 420;
+    this.sun.shadow.bias = -0.00025;
+    this.sun.shadow.normalBias = 0.035;
+    this.sun.shadow.radius = 1.6; // narrow MK penumbra
+    this.sun.shadow.intensity = 0.9; // dark, not black
     this.scene.add(this.sun, this.sun.target);
     this.hemi = new THREE.HemisphereLight(0xffffff, 0x404050, 0.35);
     this.scene.add(this.hemi);
     this.sunDir = new THREE.Vector3(0, 1, 0);
 
     // skies
-    this.sky = new Sky();
-    this.sky.scale.setScalar(8000);
-    this.sky.material.depthWrite = false;
-    this.sky.renderOrder = -10;
-    this.sky.frustumCulled = false;
-    // the physical sky is in real-world radiance; scale it into our exposure range and tame the sun disc
-    this.skyGain = { value: 0.32 };
-    this.sky.material.onBeforeCompile = (sh) => {
-      sh.uniforms.skyGain = this.skyGain;
-      sh.fragmentShader = 'uniform float skyGain;\n' + sh.fragmentShader.replace('gl_FragColor = vec4( texColor, 1.0 );', 'gl_FragColor = vec4( min( texColor * skyGain, vec3( 4.0 ) ), 1.0 );');
-    };
+    this.sky = makeDaySky();
     this.scene.add(this.sky);
     this.dome = makeNightDome();
     this.scene.add(this.dome);
+    this.clouds = new Clouds();
+    this.scene.add(this.clouds.mesh);
+    this.ridges = new FarRidges();
+    this.scene.add(this.ridges.mesh);
+    this.ridgeOpacity = 0;
     this.scene.fog = new THREE.FogExp2(0xffffff, 0.002);
-    this.fogBase = new THREE.Color('#ffffff'); // look's fog colour (crossfaded); the track tints it red with doom
+    this.fogBase = new THREE.Color('#ffffff'); // look's haze colour (crossfaded); the track tints it red with doom
+    this.hazeBaseY = 0;
+    this.speedFx = 0;
 
     this._buildComposer();
     this.setQuality(quality);
@@ -107,7 +149,8 @@ export class Renderer {
     this.composer.addPass(this.gtao);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(4, 4), GRADE.bloomStr, 0.45, GRADE.bloomThr);
     this.composer.addPass(this.bloom);
-    this.composer.addPass(new OutputPass());
+    this.gradePass = new GradePass();
+    this.composer.addPass(this.gradePass);
   }
 
   setQuality(q) {
@@ -130,6 +173,7 @@ export class Renderer {
     this.composer.setSize(innerWidth, innerHeight);
     this.camera.aspect = innerWidth / innerHeight;
     this.camera.updateProjectionMatrix();
+    this.gradePass.uniforms.aspect.value = this.camera.aspect;
   }
 
   async loadEnvs(manifest, base) {
@@ -146,17 +190,26 @@ export class Renderer {
     await Promise.all(jobs);
   }
 
-  /** apply a look (from looks.js). yaw0 = course heading at this point so the sun azimuth is relative to travel. */
+  /** boost / speed feel: 0..1 radial blur towards the vanishing point (cheap: one branch when 0) */
+  setSpeedFx(k) { this.speedFx = THREE.MathUtils.clamp(k || 0, 0, 1); }
+
+  /** world y the far ridges and the cloud bank sit on (track sets it per section) */
+  setFarBase(y) { this.ridges.baseY = y - 6; this.clouds.baseY = y; }
+
+  // ---------- looks ----------
   _lookState() {
-    const u = this.dome.material.uniforms;
+    const u = this.dome.material.uniforms, s = this.sky.material.uniforms;
     return {
       exposure: this.renderer.toneMappingExposure, envI: this.scene.environmentIntensity, sunI: this.sun.intensity,
       fogD: this.scene.fog.density, sunC: this.sun.color.clone(), fogC: this.fogBase.clone(), hemiC: this.hemi.color.clone(), hemiG: this.hemi.groundColor.clone(),
-      top: u.top.value.clone(), horizon: u.horizon.value.clone(), nebula: u.nebula.value.clone(), nebulaAmt: u.nebulaAmt.value, stars: u.stars.value,
+      top: u.top.value.clone(), horizon: u.horizon.value.clone(), nebula: u.nebula.value.clone(), nebulaAmt: u.nebulaAmt.value, stars: u.stars.value, aurora: u.aurora.value,
+      zen: s.zenith.value.clone(), mid: s.mid.value.clone(), hzSun: new THREE.Color(HAZE.B[0], HAZE.B[1], HAZE.B[2]),
+      hz: [HAZE.A[3], HAZE.C[1], HAZE.C[2], HAZE.C[3], HAZE.B[3]], grade: this.gradePass.uniforms.grade.value.clone(),
+      ridge: this.ridgeOpacity,
     };
   }
   _setLookState(a, b, k) {
-    const u = this.dome.material.uniforms, L = THREE.MathUtils.lerp;
+    const u = this.dome.material.uniforms, s = this.sky.material.uniforms, L = THREE.MathUtils.lerp;
     this.renderer.toneMappingExposure = L(a.exposure, b.exposure, k);
     this.scene.environmentIntensity = L(a.envI, b.envI, k);
     this.sun.intensity = L(a.sunI, b.sunI, k);
@@ -165,19 +218,34 @@ export class Renderer {
     this.fogBase.lerpColors(a.fogC, b.fogC, k);
     this.hemi.color.lerpColors(a.hemiC, b.hemiC, k);
     this.hemi.groundColor.lerpColors(a.hemiG, b.hemiG, k);
+    _c.lerpColors(a.hzSun, b.hzSun, k);
+    HAZE.B[0] = _c.r; HAZE.B[1] = _c.g; HAZE.B[2] = _c.b;
+    HAZE.A[3] = L(a.hz[0], b.hz[0], k); HAZE.C[1] = L(a.hz[1], b.hz[1], k); HAZE.C[2] = L(a.hz[2], b.hz[2], k); HAZE.C[3] = L(a.hz[3], b.hz[3], k); HAZE.B[3] = L(a.hz[4], b.hz[4], k);
+    this.gradePass.uniforms.grade.value.lerpVectors(a.grade, b.grade, k);
+    this._setRidgeOpacity(L(a.ridge, b.ridge, k));
+    if (this.fade.skyLerp) { s.zenith.value.lerpColors(a.zen, b.zen, k); s.mid.value.lerpColors(a.mid, b.mid, k); }
     if (this.fade.domeMode === 'lerp') {
       u.top.value.lerpColors(a.top, b.top, k); u.horizon.value.lerpColors(a.horizon, b.horizon, k); u.nebula.value.lerpColors(a.nebula, b.nebula, k);
-      u.nebulaAmt.value = L(a.nebulaAmt, b.nebulaAmt, k); u.stars.value = L(a.stars, b.stars, k);
+      u.nebulaAmt.value = L(a.nebulaAmt, b.nebulaAmt, k); u.stars.value = L(a.stars, b.stars, k); u.aurora.value = L(a.aurora, b.aurora, k);
     }
   }
+  _setRidgeOpacity(o) {
+    this.ridgeOpacity = o;
+    this.ridges.mat.opacity = o;
+    this.ridges.mesh.visible = o > 0.01 && !!this.ridgeFar;
+  }
 
-  /** apply a look; fade > 0 crossfades sky dome / sky, fog, exposure and lights over `fade` seconds */
+  /** apply a look (from looks.js). yaw0 = course heading here so the sun azimuth is relative to travel.
+   *  fade > 0 crossfades sky / dome, haze, exposure, lights and grade over `fade` seconds. */
   applyLook(look, yaw0 = 0, fade = 0) {
     const from = fade > 0 && this.look ? this._lookState() : null;
     const wasOutdoor = this.sky.visible && !this.dome.visible;
+    const wasSkyLook = this.look && ['day', 'sunset', 'dusk'].includes(this.look.sky);
     this.fade = null;
     this.dome.material.uniforms.alpha.value = 1;
     this.look = look;
+    const D = SKY_DEFAULTS[look.sky] || SKY_DEFAULTS.day;
+    const hz = { ...D.haze, ...(look.haze || {}) };
     const env = this.envs[look.env] || this.fallbackEnv;
     this.scene.environment = env;
     this.scene.environmentIntensity = GRADE.envK * (look.envIntensity ?? (look.sky === 'indoor' ? 0.8 : look.sky === 'night' || look.sky === 'space' ? 0.65 : 1));
@@ -196,53 +264,78 @@ export class Renderer {
     this.sun.color.set(s.color || '#ffffff');
     this.sun.intensity = s.intensity ?? 3;
     const fog = look.fog || {};
-    this.scene.fog.color.set(fog.color || '#ffffff');
-    this.fogBase.set(fog.color || '#ffffff');
+    const hazeHex = hz.color || fog.color || '#ffffff';
+    this.fogBase.set(hazeHex).multiplyScalar(hz.gain);
+    this.scene.fog.color.copy(this.fogBase);
     this.scene.fog.density = (fog.density ?? 0.002) * GRADE.fogK;
     this.hemi.color.set(fog.color || '#ffffff');
     this.hemi.groundColor.set(look.ground?.tint || '#555555');
 
+    // haze (shared uniforms)
+    HAZE.A[0] = this.sunDir.x; HAZE.A[1] = this.sunDir.y; HAZE.A[2] = this.sunDir.z; HAZE.A[3] = hz.sun;
+    _c.set(hazeHex).multiplyScalar(hz.gain);
+    _c2.set(s.color || '#ffffff').multiplyScalar(hz.gain * 1.35);
+    _c.lerp(_c2, 0.65);
+    HAZE.B[0] = _c.r; HAZE.B[1] = _c.g; HAZE.B[2] = _c.b; HAZE.B[3] = 1 / hz.height;
+    HAZE.C[1] = hz.desat; HAZE.C[2] = hz.k; HAZE.C[3] = hz.start;
+
+    // grade
+    const gr = { ...D.grade, ...(look.grade || {}) };
+    this.gradePass.uniforms.grade.value.set(gr.sat, gr.contrast, gr.warm, gr.vignette);
+
     const outdoor = look.sky === 'day' || look.sky === 'sunset' || look.sky === 'dusk';
     this.sky.visible = outdoor;
     this.dome.visible = !outdoor;
+    this.clouds.mesh.visible = outdoor;
     if (outdoor) {
-      const u = this.sky.material.uniforms, p = look.skyParams || {};
-      u.turbidity.value = p.turbidity ?? 3;
-      u.rayleigh.value = p.rayleigh ?? 1.5;
-      u.mieCoefficient.value = p.mie ?? 0.005;
-      u.mieDirectionalG.value = 0.8;
-      u.sunPosition.value.copy(this.sunDir);
-      if (u.cloudCoverage) {
-        u.cloudCoverage.value = p.clouds ?? 0.4;
-        u.cloudDensity.value = 0.5;
-        u.cloudScale.value = 0.00025;
-        u.cloudSpeed.value = 0.00004;
-      }
+      const sk = { ...D.sky, ...(look.skyColors || {}) };
+      const u = this.sky.material.uniforms;
+      u.zenith.value.set(sk.zenith); u.mid.value.set(sk.mid);
+      u.band.value = sk.band; u.glow.value = sk.glow; u.disc.value = sk.disc; u.cirrus.value = sk.cirrus;
+      u.sunCol.value.set(s.color || '#ffffff');
+      // clouds: lit by the sun colour, shaded with a sky-tinted grey
+      const cl = { ...D.cloud, ...(look.clouds || {}) };
+      const cu = this.clouds.uniforms;
+      cu.litCol.value.set(s.color || '#ffffff').lerp(_c2.setRGB(1, 1, 1), look.sky === 'day' ? 0.55 : 0.15).multiplyScalar(cl.lit);
+      cu.shadeCol.value.set(cl.shade).multiplyScalar(cl.shadeK);
+      cu.hazeAmt.value = cl.haze;
+      this.clouds.setAmount(cl.amount ?? Math.min(1, 0.2 + (look.skyParams?.clouds ?? 0.4) * 1.3));
     } else {
       const c = look.nightColors || {};
       const u = this.dome.material.uniforms;
+      const dm = { ...D.dome, ...(look.dome || {}) };
       u.top.value.set(c.top || '#05010f');
       u.horizon.value.set(c.horizon || '#20104a');
       u.nebula.value.set(c.nebula || '#3a5cff');
-      u.nebulaAmt.value = look.sky === 'space' ? 1 : look.sky === 'night' ? 0.35 : 0;
+      u.nebulaAmt.value = look.sky === 'space' ? 1 : look.sky === 'night' ? 0.3 : 0;
       u.stars.value = look.sky === 'indoor' ? 0 : 1;
+      u.aurora.value = dm.aurora;
+      u.band.value = dm.band;
     }
+    // far ridges
+    this.ridgeFar = look.far || null;
+    this.ridges.set(this.ridgeFar);
+    this._setRidgeOpacity(this.ridgeFar ? 1 : 0);
+
     if (from) {
       const to = this._lookState();
       let domeMode = 'lerp';
       if (!wasOutdoor && outdoor) {
-        // space/night dome → physical sky: keep the old dome on top and fade it out
+        // space/night dome → day sky: keep the old dome on top and fade it out
         domeMode = 'out';
         this.dome.visible = true;
         const u = this.dome.material.uniforms;
-        u.top.value.copy(from.top); u.horizon.value.copy(from.horizon); u.nebula.value.copy(from.nebula); u.nebulaAmt.value = from.nebulaAmt; u.stars.value = from.stars;
+        u.top.value.copy(from.top); u.horizon.value.copy(from.horizon); u.nebula.value.copy(from.nebula); u.nebulaAmt.value = from.nebulaAmt; u.stars.value = from.stars; u.aurora.value = from.aurora;
       } else if (wasOutdoor && !outdoor) {
         domeMode = 'in';
         this.sky.visible = true;
+        this.clouds.mesh.visible = true;
       }
-      this.fade = { from, to, t: 0, dur: fade, domeMode, outdoor };
+      if (from.ridge > 0 && !this.ridgeFar) { this.ridgeFar = this._prevFar; }
+      this.fade = { from, to, t: 0, dur: fade, domeMode, outdoor, skyLerp: wasSkyLook && outdoor, far: look.far || null };
       this._tickFade(0);
     }
+    this._prevFar = look.far || null;
   }
 
   _tickFade(dt) {
@@ -257,70 +350,70 @@ export class Renderer {
     if (f.t >= f.dur) {
       a.value = 1;
       this.sky.visible = f.outdoor;
+      this.clouds.mesh.visible = f.outdoor && this.clouds.mesh.count > 0;
       this.dome.visible = !f.outdoor;
+      this.ridgeFar = f.far;
+      this._setRidgeOpacity(f.far ? 1 : 0);
       this.fade = null;
     }
   }
 
-  /** follow the kart with the sun's shadow frustum and keep skies centred on the camera */
+  /** follow the view with the sun's shadow box and keep skies centred on the camera */
   update(focus, t) {
     this._tickFade(Math.min(0.1, Math.max(0, t - (this._lastT ?? t))));
     this._lastT = t;
-    this.sun.position.copy(focus).addScaledVector(this.sunDir, 150);
-    this.sun.target.position.copy(focus);
-    this.sky.position.copy(this.camera.position);
-    this.dome.position.copy(this.camera.position);
-    if (this.sky.material.uniforms.time) this.sky.material.uniforms.time.value = t;
+    // shadow box centred a little ahead of the kart along the view, snapped to whole shadow texels (no shimmer)
+    this.camera.getWorldDirection(_fwd);
+    _fwd.y = 0;
+    if (_fwd.lengthSq() < 1e-6) _fwd.set(0, 0, -1);
+    _fwd.normalize();
+    _v.copy(focus).addScaledVector(_fwd, this.shadowHalf * 0.55);
+    const L = this.sunDir;
+    _lr.set(0, 1, 0).cross(L);
+    if (_lr.lengthSq() < 1e-6) _lr.set(1, 0, 0);
+    _lr.normalize();
+    _lu.copy(L).cross(_lr).normalize();
+    const texel = (this.shadowHalf * 2) / this.sun.shadow.mapSize.x;
+    const a = Math.round(_v.dot(_lr) / texel) * texel, b = Math.round(_v.dot(_lu) / texel) * texel, c = _v.dot(L);
+    _v.copy(_lr).multiplyScalar(a).addScaledVector(_lu, b).addScaledVector(L, c);
+    this.sun.target.position.copy(_v);
+    this.sun.position.copy(_v).addScaledVector(L, 180);
+    // skies + far layers
+    const cp = this.camera.position;
+    this.sky.position.copy(cp);
+    this.dome.position.copy(cp);
+    this.clouds.update(cp, t);
+    this.ridges.update(cp);
+    this.sky.material.uniforms.time.value = t;
     this.dome.material.uniforms.time.value = t;
+    this.hazeBaseY = focus.y;
   }
 
   render() {
+    // haze base + horizon colour (the track tints scene.fog.color with doom redness every frame)
+    HAZE.C[0] = this.hazeBaseY;
+    const fc = this.scene.fog.color;
+    this.sky.material.uniforms.fogCol.value.copy(fc);
+    this.dome.material.uniforms.fogCol.value.copy(fc);
+    this.clouds.uniforms.fogCol.value.copy(fc);
+    const gp = this.gradePass.uniforms;
+    gp.speed.value = this.speedFx;
+    gp.time.value = this._lastT || 0;
+    if (!GRADE.grade) gp.grade.value.set(1, 0, 0, 0);
+    // shader warm-up: after the first frames, compile every material already in the scene (the whole static track,
+    // both skies, clouds, ridges) in parallel so the first look at a new section doesn't stall on program links
+    if (!this._warm && (this._frames = (this._frames || 0) + 1) > 20) {
+      this._warm = true;
+      const vis = [this.sky, this.dome, this.clouds.mesh, this.ridges.mesh].map((o) => [o, o.visible]);
+      for (const [o] of vis) o.visible = true;
+      const p = this.renderer.compileAsync(this.scene, this.camera);
+      for (const [o, v] of vis) o.visible = v;
+      p.catch(() => {});
+    }
     // count every pass (scene, shadows, AO, post) in renderer.info
     this.renderer.info.autoReset = false;
     this.renderer.info.reset();
     if (this.Q.ao || this.Q.bloom) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
   }
-}
-
-function makeNightDome() {
-  const mat = new THREE.ShaderMaterial({
-    side: THREE.BackSide, depthWrite: false, fog: false, transparent: true,
-    uniforms: {
-      alpha: { value: 1 },
-      top: { value: new THREE.Color('#05010f') }, horizon: { value: new THREE.Color('#20104a') },
-      nebula: { value: new THREE.Color('#ff4fd8') }, nebulaAmt: { value: 0 }, stars: { value: 1 }, time: { value: 0 },
-    },
-    vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }`,
-    fragmentShader: `
-      uniform vec3 top; uniform vec3 horizon; uniform vec3 nebula; uniform float nebulaAmt; uniform float stars; uniform float time; uniform float alpha;
-      varying vec3 vDir;
-      float hash(vec3 p){ p = fract(p*0.3183099+.1); p *= 17.0; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
-      float noise(vec3 x){ vec3 i=floor(x); vec3 f=fract(x); f=f*f*(3.0-2.0*f);
-        return mix(mix(mix(hash(i+vec3(0,0,0)),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
-                   mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z); }
-      float fbm(vec3 p){ float a=0.5, s=0.0; for(int i=0;i<5;i++){ s+=a*noise(p); p*=2.03; a*=0.5; } return s; }
-      void main(){
-        vec3 d = normalize(vDir);
-        float h = clamp(d.y*1.2+0.1, 0.0, 1.0);
-        vec3 col = mix(horizon, top, pow(h, 0.6));
-        // nebula
-        float n = fbm(d*3.0 + vec3(0.0, time*0.01, 0.0));
-        float n2 = fbm(d*6.0 + 4.0);
-        col += nebulaAmt * nebula * pow(max(n*n2*2.2 - 0.25, 0.0), 1.6) * 1.6;
-        col += nebulaAmt * vec3(0.2,0.5,1.0) * pow(max(fbm(d*2.0+9.0) - 0.45, 0.0), 2.0) * 3.0;
-        // stars
-        vec3 sp = d * 380.0;
-        float st = hash(floor(sp));
-        float tw = 0.6 + 0.4*sin(time*3.0 + st*50.0);
-        col += stars * vec3(1.0) * step(0.9965, st) * tw * smoothstep(-0.1, 0.3, d.y) * 2.5;
-        gl_FragColor = vec4(col, alpha);
-        #include <tonemapping_fragment>
-        #include <colorspace_fragment>
-      }`,
-  });
-  const m = new THREE.Mesh(new THREE.SphereGeometry(5000, 48, 24), mat);
-  m.frustumCulled = false;
-  m.renderOrder = -10;
-  return m;
 }
