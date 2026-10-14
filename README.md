@@ -22,6 +22,14 @@ Everything is vendored in `vendor/` (three.js r186, MediaPipe Tasks Vision 0.10.
   - **Shared code:** v2 uses the same song, beatmap, hand tracking and input as v1 (`src/`); its own renderer, course and art live in `v2/src/`.
   - **Quality:** `?quality=low|med|high|ultra` (default high; it steps down automatically if FPS drops), or press **O** to cycle.
 
+- **v3 (world scale):** `http://localhost:8000/v3/`. v2 rebuilt around Mario Kart World's proportions, measured from 33 MKW stills (`PLAN-V3.md`, raw numbers in `refs/mk-measure/`):
+  - **Camera:** the MK chase camera, solved from the stills: 58° FOV, 1.95 kart widths high, 13° pitch, horizon at 29% from the top.
+  - **Scale:** half-size karts in a full-size world. The road is ≈10 kart widths wide, and props are sized to MK's object table.
+  - **Corners:** MK-style corners and a real hairpin on "sharp left turn".
+  - **Atmosphere:** MK skies and haze, smoother effects, halos and obstacles.
+  - **Shared code:** v3's code lives in `v3/src/` (`scale.js` holds every scale constant). It shares the song, beatmap, hand tracking and input with v1 and v2.
+  - **Dev:** `__dbg.measure()` in the console prints the frame in MK terms (kart px, horizon y, road width in kart widths), and `__dbg.propSizes()` audits prop heights.
+
 ## Controls
 
 | Input                  | What                                                    |

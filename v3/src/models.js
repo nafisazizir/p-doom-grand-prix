@@ -54,14 +54,17 @@ export function model(id, { size = null, tint = null } = {}) {
     const g = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: '#888' }));
     g.position.y = 0.5;
     const w = new THREE.Group(); w.add(g);
-    if (size) w.scale.setScalar(size);
+    if (size) { g.scale.setScalar(size); g.position.y = 0.5 * size; }
     return w;
   }
-  const obj = c.scene.clone(true);
+  const inner = c.scene.clone(true);
   if (size) {
     const m = Math.max(c.size.x, c.size.y, c.size.z);
-    obj.scale.setScalar(size / m);
+    inner.scale.setScalar(size / m);
   }
+  // wrap: track._spawn sets the root's scale per placement, which used to wipe the size normalisation
+  const obj = new THREE.Group();
+  obj.add(inner);
   if (tint) {
     obj.traverse((o) => {
       if (o.isMesh) { o.material = o.material.clone(); o.material.color.multiply(new THREE.Color(tint)); }

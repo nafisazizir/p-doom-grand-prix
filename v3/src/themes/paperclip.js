@@ -5,7 +5,6 @@
 // the empty killswitch office (OUT OF OFFICE · PTO) and a smoky blues club: ORTHOGONALITY THESIS BLUES — LIVE.
 import { THREE, toon, glow, G, mesh, textTexture, roundRect, MAT, FONT, makeRng, clamp } from '../toolkit.js';
 import { surface } from '../textures.js';
-import { model } from '../models.js';
 import { Course, SPEED } from '../course.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -193,9 +192,9 @@ const CLIP_LO = () => (_clipLo ||= clipGeo(22, 3, 0.14));
 
 // ---------- clip mountains (InstancedMesh) ----------
 const TINTS = ['#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ff6fa8', '#6fc2ff', '#ffd24a', '#ffffff', '#9dffb0'].map((c) => new THREE.Color(c));
-function heap(R, Hh, N, seed) {
+function heap(R, Hh, N, seed, cs = 1) {
   const g = new THREE.Group();
-  const core = mesh(G.cone(R * 0.93, Hh * 0.94, 28), DARK(), 0, Hh * 0.47, 0);
+  const core = mesh(G.cone(R * 0.93, Hh * 0.94, 40), cs > 1 ? MAT.metal('#8a92ac', { roughness: 0.3, metalness: 0.85 }) : DARK(), 0, Hh * 0.47, 0);
   g.add(core);
   const inst = new THREE.InstancedMesh(CLIP_LO(), CHROME(), N);
   const r = makeRng(seed);
@@ -207,7 +206,7 @@ function heap(R, Hh, N, seed) {
     _v.set(Math.cos(a) * rr, Math.max(0.2, y), Math.sin(a) * rr);
     _e.set(r() * 6.28, r() * 6.28, r() * 6.28);
     _q.setFromEuler(_e);
-    const sc = 0.45 + r() * 0.45;
+    const sc = (0.45 + r() * 0.45) * cs;
     _s.set(sc, sc, sc);
     _m4.compose(_v, _q, _s);
     inst.setMatrixAt(i, _m4);
@@ -644,11 +643,11 @@ function memo() {
   const g = bake('memo', () => {
     const r = new THREE.Group();
     const steel = STEEL();
-    for (const x of [-12.8, 12.8]) {
+    for (const x of [-14.2, 14.2]) {
       r.add(mesh(G.cyl(0.35, 0.42, 15, 12), steel, x, 7.5, -0.4));
       r.add(mesh(G.cyl(1.0, 1.1, 0.5, 12), DARK(), x, 0.25, -0.4));
     }
-    r.add(mesh(G.box(26, 0.4, 0.4), steel, 0, 14.2, -0.5));
+    r.add(mesh(G.box(29, 0.4, 0.4), steel, 0, 14.2, -0.5));
     const sheet = textFace(['MEMO   re: re: re: RE: paperclips', 'could we maybe make slightly fewer?', '— the board (reply-all)'], 20, 6, { bg: '#f7f4ea', fg: '#22223a', border: null, borderW: 0, radius: 6, pad: 40 }, { emissive: 0.55, roughness: 0.9 });
     sheet.position.set(0, 10.6, -0.2);
     sheet.rotation.z = 0.015;
@@ -854,6 +853,213 @@ function coolingTower() {
   return g;
 }
 
+// ---------- v3: trackside + mid-distance industry at MK scale ----------
+/** steel guardrail (≈0.9 kh) with amber reflectors that catch the headlights; one 20.4-unit run */
+const RAIL_L = 20.4;
+function rail() {
+  return bake('rail', () => {
+    const r = new THREE.Group();
+    const steel = MAT.metal('#9aa2b4', { roughness: 0.32 });
+    const post = MAT.metal('#4a5062', { roughness: 0.5 });
+    for (let z = -RAIL_L / 2 + 1.2; z < RAIL_L / 2; z += 3.4) {
+      r.add(mesh(G.rbox(0.28, 1.7, 0.28, 0.05), post, 0, 0.85, z));
+      r.add(mesh(G.box(0.12, 0.12, 0.12), glow('#ffb03a', { intensity: 3 }), -0.2, 1.42, z));
+    }
+    for (const y of [0.85, 1.35]) {
+      r.add(mesh(G.rbox(0.18, 0.34, RAIL_L, 0.07), steel, -0.12, y, 0));
+    }
+    return r;
+  });
+}
+/** a pallet of paperclip boxes (each ≈1.1 kh) */
+let _boxMat = null;
+function boxMat() {
+  if (_boxMat) return _boxMat;
+  const tex = canvasTex('clipbox', 512, 256, (g, w, h) => {
+    g.fillStyle = '#c8a06a'; g.fillRect(0, 0, w, h);
+    g.fillStyle = 'rgba(90,60,20,0.2)'; g.fillRect(0, h / 2 - 10, w, 20);
+    g.fillStyle = '#1d2a4a'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    fitText(g, 'PAPERCLIPS ×10⁶', w / 2, 70, w - 50, 64, 900);
+    g.fillStyle = '#c0141f';
+    fitText(g, 'NOW WITH MORE CLIP', w / 2, 150, w - 80, 40, 800);
+    g.fillStyle = '#1d2a4a';
+    fitText(g, 'contains: atoms (formerly yours)', w / 2, 210, w - 60, 28, 700);
+  });
+  _boxMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 });
+  return _boxMat;
+}
+function boxes(seed) {
+  return bake('boxes' + seed, () => {
+    const r = new THREE.Group();
+    const rr = makeRng(seed);
+    const wood = MAT.wood('#8a6a42');
+    for (const [px, pz] of [[0, 0], [2.6, 0.4]]) {
+      r.add(mesh(G.box(2.4, 0.3, 2.4), wood, px, 0.15, pz));
+      const n = 1 + Math.floor(rr() * 3);
+      for (let i = 0; i < n; i++) {
+        const b = mesh(G.rbox(2.0, 1.9, 2.0, 0.08), boxMat(), px + (rr() - 0.5) * 0.3, 0.3 + 0.95 + i * 1.9, pz + (rr() - 0.5) * 0.3);
+        b.rotation.y = (rr() - 0.5) * 0.3;
+        r.add(b);
+      }
+    }
+    const cone = MAT.plastic('#ff6a1a');
+    r.add(mesh(G.cone(0.4, 1.1, 14), cone, -1.9, 0.6, 1.4));
+    r.add(mesh(G.cyl(0.28, 0.34, 0.14, 14), MAT.plastic('#ffffff'), -1.9, 0.66, 1.4));
+    return r;
+  });
+}
+/** a factory hall seen side-on from the road (≈26 tall): corrugated walls, sawtooth roof, glowing roll-up doors */
+const HALL_SIGNS = ['MORE CLIPS', 'BEND · LOOP · REPEAT', 'ALIGNMENT DEPT. (closed)', 'CLIPS R US', 'HALL 9: ATOMS IN'];
+function hall(variant) {
+  const g = bake('hall' + variant, () => {
+    const r = new THREE.Group();
+    const L = 56, D = 30, Hh = 20;
+    const clad = corrugated();
+    r.add(mesh(G.box(L, Hh, D), clad, 0, Hh / 2, -D / 2));
+    r.add(mesh(G.box(L + 0.6, 1.2, D + 0.6), MAT.paint(variant % 2 ? '#c8461e' : '#2a5ab8'), 0, Hh + 0.2, -D / 2));
+    // sawtooth roof with glowing north lights
+    for (let i = 0; i < 6; i++) {
+      const tooth = mesh(G.cyl(5, 5, D, 3), clad, -L / 2 + 4.6 + i * 9.4, Hh + 2.5, -D / 2);
+      tooth.rotation.set(Math.PI / 2, 0, Math.PI / 2);
+      tooth.scale.set(1, 1, 0.75);
+      r.add(tooth);
+      const lite = mesh(G.box(0.3, 3.4, D - 1), glow('#bfe0ff', { intensity: 1.8 }), -L / 2 + 4.6 + i * 9.4 + 3.2, Hh + 3.0, -D / 2);
+      lite.rotation.z = -0.5;
+      r.add(lite);
+    }
+    // window band + plinth
+    const win = new THREE.Mesh(G.plane(L - 6, 5.5), windowsMat());
+    win.position.set(0, 14, 0.06);
+    r.add(win);
+    r.add(mesh(G.box(L + 0.2, 1.6, 0.6), surface('concrete', { tint: '#6a7088', scale: 1 }), 0, 0.8, 0));
+    // two roll-up doors (≈8 tall), lit from inside
+    for (const x of [-14, 12]) {
+      r.add(mesh(G.box(9.6, 9.0, 0.2), glow('#ffcf8a', { intensity: 1.6 }), x, 4.5, 0.05));
+      r.add(mesh(G.box(9.6, 2.4, 0.4), MAT.metal('#6a7288'), x, 8.2, 0.2));
+      r.add(mesh(G.box(10.6, 0.6, 1.2), hazardMat(), x, 9.6, 0.4));
+      r.add(mesh(G.rbox(1.6, 0.5, 1.0, 0.1), MAT.metal('#3a3f4e'), x, 10.6, 0.6));
+      r.add(mesh(G.box(1.2, 0.1, 0.6), glow(SODIUM, { intensity: 5 }), x, 10.32, 0.7));
+    }
+    // a stack of clip boxes being loaded + a forklift-sized crate
+    r.add(mesh(G.rbox(4, 4, 4, 0.15), boxMat(), -3, 2.0, 3));
+    r.add(mesh(G.rbox(4, 4, 4, 0.15), boxMat(), 1.4, 2.0, 2.6));
+    // rooftop chimney with stripes
+    r.add(mesh(G.cyl(1.6, 2.0, 24, 18), surface('concrete', { tint: '#8a90a6', scale: 0.4 }), L / 2 - 8, Hh + 12, -D + 6));
+    r.add(mesh(G.cyl(1.68, 1.68, 1.6, 18), MAT.paint('#e8202c'), L / 2 - 8, Hh + 21, -D + 6));
+    // roof sign
+    r.add(mesh(G.box(30, 0.4, 0.4), STEEL(), -6, Hh + 7.2, -2));
+    for (let i = 0; i < 4; i++) r.add(mesh(G.box(0.3, 7, 0.3), STEEL(), -19 + i * 8.7, Hh + 3.8, -2));
+    const t = HALL_SIGNS[variant % HALL_SIGNS.length];
+    const n = neon(t, 30, 4.4, variant % 2 ? '#57c8ff' : '#ffb347', { intensity: 3.4 });
+    n.position.set(-6, Hh + 10, -1.8);
+    r.add(n);
+    return r;
+  });
+  const l = mesh(G.sphere(0.6, 10), glow('#ff2020', { intensity: 8 }), 56 / 2 - 8, 20 + 24.8, -30 + 6);
+  g.add(l);
+  const puffs = [];
+  for (let i = 0; i < 3; i++) {
+    const s = new THREE.Sprite(smokeMat());
+    s.userData.base = [56 / 2 - 8, 20 + 25, -30 + 6, i / 3];
+    g.add(s);
+    puffs.push(s);
+  }
+  Object.assign(g.userData, { lights: [l], puffs });
+  return g;
+}
+/** lattice helper: a square truss mast of height h (chords + zig-zag), into group r */
+function mast(r, mat, x, z, h, w = 2.4, step = 3) {
+  const hw = w / 2;
+  for (const dx of [-hw, hw]) for (const dz of [-hw, hw]) r.add(mesh(G.box(0.3, h, 0.3), mat, x + dx, h / 2, z + dz));
+  for (let y = 0, i = 0; y < h - 0.5; y += step, i++) {
+    const len = Math.hypot(w, step);
+    const a = Math.atan2(w, step) * (i % 2 ? 1 : -1);
+    for (const dz of [-hw, hw]) { const b = mesh(G.box(0.14, len, 0.14), mat, x, y + step / 2, z + dz); b.rotation.z = a; r.add(b); }
+    for (const dx of [-hw, hw]) { const b = mesh(G.box(0.14, len, 0.14), mat, x + dx, y + step / 2, z); b.rotation.x = a; r.add(b); }
+  }
+}
+/** tower crane (≈70 tall) lifting a giant paperclip */
+function towerCrane() {
+  const g = bake('tcrane', () => {
+    const r = new THREE.Group();
+    const yel = MAT.paint('#f0b01c');
+    const H = 62;
+    r.add(mesh(G.box(7, 2, 7), surface('concrete', { tint: '#6a7088', scale: 1 }), 0, 1, 0));
+    mast(r, yel, 0, 0, H);
+    r.add(mesh(G.rbox(3.4, 3, 3.4, 0.2), yel, 0, H + 1.5, 0));
+    r.add(mesh(G.rbox(2.6, 2.4, 2.6, 0.3), MAT.paint('#e8e8ee'), 1.6, H + 0.8, 2.2));
+    r.add(mesh(G.box(2.0, 1.2, 0.1), glow('#bfe4ff', { intensity: 2 }), 1.6, H + 1.1, 3.52));
+    // jib towards the road (local −x), counter-jib with concrete blocks
+    const bar = (x0, y0, x1, y1, t, m = yel) => {
+      const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy);
+      const b = mesh(G.box(t, len, t), m, (x0 + x1) / 2, (y0 + y1) / 2, 0);
+      b.rotation.z = Math.atan2(-dx, dy);
+      r.add(b);
+    };
+    // jib towards the road (local −x): a triangular truss
+    for (const z of [-0.8, 0.8]) r.add(mesh(G.box(46, 0.35, 0.35), yel, -21, H + 3.1, z));
+    r.add(mesh(G.box(46, 0.35, 0.35), yel, -21, H + 5.2, 0));
+    for (let x = -44, i = 0; x < 1; x += 2.4, i++) bar(x, H + 3.1, x + 2.4, H + 5.2, 0.16);
+    for (let x = -44; x < 1; x += 2.4) bar(x + 2.4, H + 3.1, x + 2.4, H + 5.2, 0.12);
+    // counter-jib with concrete blocks, tower top and stays
+    r.add(mesh(G.box(16, 1.4, 1.6), yel, 8, H + 3.6, 0));
+    r.add(mesh(G.rbox(4.6, 3.6, 3.0, 0.2), surface('concrete', { tint: '#8a90a6', scale: 1 }), 13, H + 1.6, 0));
+    r.add(mesh(G.cyl(0.25, 0.32, 9, 8), yel, 0, H + 7.5, 0));
+    const cable = MAT.metal('#c0c6d4');
+    bar(-40, H + 5.2, 0, H + 12, 0.1, cable);
+    bar(14, H + 4.2, 0, H + 12, 0.1, cable);
+    // trolley, cables and the load: a giant chrome paperclip
+    r.add(mesh(G.box(2, 0.8, 2.2), MAT.metal('#3a3f4e'), -34, H + 2.6, 0));
+    r.add(mesh(G.cyl(0.06, 0.06, 26, 6), MAT.metal('#c0c6d4'), -34, H - 10.5, 0));
+    r.add(mesh(G.rbox(1.4, 1.2, 1.0, 0.2), MAT.paint('#e8202c'), -34, H - 24, 0));
+    const clip = mesh(CLIP(), CHROME(), -34, H - 37.5, 0);
+    clip.scale.setScalar(3.2);
+    clip.rotation.set(0, 0.6, 0.12);
+    r.add(clip);
+    return r;
+  });
+  const lights = [mesh(G.sphere(0.6, 10), glow('#ff2020', { intensity: 8 }), 0, 62 + 12.3, 0), mesh(G.sphere(0.5, 10), glow('#ff2020', { intensity: 8 }), -44, 62 + 5.2, 0)];
+  g.add(...lights);
+  Object.assign(g.userData, { lights, puffs: [] });
+  return g;
+}
+/** an overhead gantry crane spanning the road (≈19 tall, legs at ±17) */
+function gantryCrane() {
+  const g = bake('gcrane', () => {
+    const r = new THREE.Group();
+    const yel = MAT.paint('#f0b01c');
+    const H = 18;
+    for (const x of [-17, 17]) {
+      for (const dz of [-2.2, 2.2]) r.add(mesh(G.rbox(1.2, H, 1.2, 0.15), yel, x, H / 2, dz));
+      r.add(mesh(G.rbox(1.4, 1.4, 6.4, 0.15), yel, x, H - 0.7, 0));
+      r.add(mesh(G.rbox(2.2, 1.2, 7.2, 0.2), MAT.metal('#3a3f4e'), x, 0.6, 0));
+      for (const y of [4, 9, 14]) { const b = mesh(G.box(0.3, 0.3, 5.4), yel, x, y, 0); r.add(b); }
+      r.add(mesh(G.box(1.24, 1.6, 1.24), hazardMat(), x, 1.8, -2.2));
+      r.add(mesh(G.box(1.24, 1.6, 1.24), hazardMat(), x, 1.8, 2.2));
+    }
+    r.add(mesh(G.rbox(37, 2.2, 1.6, 0.2), yel, 0, H + 0.4, -1.4));
+    r.add(mesh(G.rbox(37, 2.2, 1.6, 0.2), yel, 0, H + 0.4, 1.4));
+    // trolley + hoist + a dangling chrome clip, well above the karts
+    r.add(mesh(G.rbox(4.0, 1.8, 4.4, 0.2), MAT.paint('#e8202c'), 4, H + 2.2, 0));
+    for (const dx of [-0.5, 0.5]) r.add(mesh(G.cyl(0.06, 0.06, 4.2, 6), MAT.metal('#c0c6d4'), 4 + dx, H - 1.9, 0));
+    r.add(mesh(G.rbox(1.6, 0.9, 1.0, 0.2), MAT.paint('#16161e'), 4, H - 4.2, 0));
+    const clip = mesh(CLIP(), CHROME(), 4, H - 9.6, 0);
+    clip.scale.setScalar(1.4);
+    clip.rotation.set(0, 0.5, Math.PI);
+    r.add(clip);
+    const sign = textFace(['LIFTING: 1 PAPERCLIP', 'max load: all of them'], 14, 2.2, { bg: '#16161e', fg: '#ffc21a', border: '#ffc21a', weight: 900 }, { emissive: 0.9 });
+    sign.position.set(-6, H + 0.4, 2.25);
+    r.add(sign);
+    for (const x of [-12, 12]) r.add(mesh(G.box(1.4, 0.2, 0.6), glow('#ffd9a0', { intensity: 4 }), x, H - 0.75, 0));
+    return r;
+  });
+  const beacon = mesh(G.sphere(0.4, 10), glow('#ffae1a', { intensity: 8 }), 4, 18 + 3.4, 0);
+  g.add(beacon);
+  g.userData.lights = [beacon];
+  g.userData.puffs = [];
+  return g;
+}
+
 // ---------- layout ----------
 export default {
   id: 'paperclip',
@@ -878,51 +1084,72 @@ export default {
     const t = zf / SPEED;
     let dz;
     // the fuse: a continuous rope along the left verge from the gate to the bomb
-    if (t > T0 + 0.05 && t < BOMB_T - 0.1) out.push({ kind: 'fuse', x: -10.9 });
-    if ((dz = once(zf, BOMB_T)) !== null) out.push({ kind: 'bomb', x: -17.5, dz, rotY: faceRot(zf + dz, -17.5, 40) });
-    // set pieces timed to the lyrics
+    if (t > T0 + 0.05 && t < BOMB_T - 0.1) out.push({ kind: 'fuse', x: -12.4, abs: true });
+    if ((dz = once(zf, BOMB_T)) !== null) out.push({ kind: 'bomb', x: -19, dz, rotY: faceRot(zf + dz, -19, 40), abs: true });
+    // set pieces timed to the lyrics (v3: everything beside the road clears the kerb; spanning props clear ±12.5)
     if ((dz = once(zf, 97.0)) !== null) out.push({ kind: 'memo', x: 0, dz });
-    if ((dz = once(zf, 98.3)) !== null) out.push({ kind: 'days', x: 13.2, dz, rotY: -0.25 });
-    if ((dz = once(zf, 99.9)) !== null) out.push({ kind: 'office', x: 18.5, dz, rotY: faceRot(zf + dz, 18.5, 45) });
+    if ((dz = once(zf, 98.3)) !== null) out.push({ kind: 'days', x: 17.5, dz, rotY: -0.25, abs: true });
+    if ((dz = once(zf, 99.9)) !== null) out.push({ kind: 'office', x: 20, dz, rotY: faceRot(zf + dz, 20, 45), abs: true });
     if ((dz = once(zf, 101.0)) !== null) out.push({ kind: 'overbelt', x: 0, dz });
-    if ((dz = once(zf, 102.0)) !== null) out.push({ kind: 'counter', x: -15.5, dz, rotY: 0.25 });
-    if ((dz = once(zf, 103.6)) !== null) out.push({ kind: 'queue', x: 14.5, dz, rotY: -0.5 });
+    if ((dz = once(zf, 102.0)) !== null) out.push({ kind: 'counter', x: -19.5, dz, rotY: 0.25, abs: true });
+    if ((dz = once(zf, 103.6)) !== null) out.push({ kind: 'queue', x: 19, dz, rotY: -0.5, abs: true });
     if ((dz = once(zf, 104.6)) !== null) out.push({ kind: 'memo', x: 0, dz });
-    if ((dz = once(zf, 106.7)) !== null) out.push({ kind: 'stage', x: 20.5, dz, rotY: faceRot(zf + dz, 20.5, 45) });
+    if ((dz = once(zf, 106.7)) !== null) out.push({ kind: 'stage', x: 22, dz, rotY: faceRot(zf + dz, 22, 45), abs: true });
     if ((dz = once(zf, 108.4)) !== null) out.push({ kind: 'overbelt', x: 0, dz });
-    // sodium lamps, alternating sides
-    if (every(rel, 26, 4)) {
-      const side = Math.floor((rel - 4) / 26) % 2 ? -1 : 1;
-      out.push({ kind: side > 0 ? 'lampR' : 'lampL', x: side * 12.6 });
+    if ((dz = once(zf, 99.0)) !== null) out.push({ kind: 'gcrane', x: 0, dz, abs: true });
+    if ((dz = once(zf, 105.5)) !== null) out.push({ kind: 'gcrane', x: 0, dz, abs: true });
+    // guardrails both sides (the left one sits behind the fuse)
+    if (every(rel, 20, 0) && rel > 6) {
+      out.push({ kind: 'rail', x: 12.55, abs: true });
+      out.push({ kind: 'rail', x: -13.3, abs: true, rotY: Math.PI });
+    }
+    // sodium lamps, alternating sides (MK street lamps ≈ 5–6 kh)
+    if (every(rel, 20, 4)) {
+      const side = Math.floor((rel - 4) / 20) % 2 ? -1 : 1;
+      out.push({ kind: side > 0 ? 'lampR' : 'lampL', x: side * 14.2, abs: true });
     }
     // roadside clutter (right side mostly: the left verge belongs to the fuse)
     const busy = [99.9, 103.6, 106.7].some((x) => Math.abs(t - x) < 0.9) || Math.abs(t - 98.3) < 0.4;
     if (!busy) {
       const r = rng();
-      if (r < 0.2) out.push({ kind: 'belt', x: 15.5, rotY: 0 });
-      else if (r < 0.34) out.push({ kind: 'clip', x: rng.range(14, 19), rotY: rng.range(-1.2, 1.2), scale: rng.range(0.85, 1.2) });
-      else if (r < 0.42) out.push({ kind: rng.chance(0.5) ? 'clipPink' : 'clipBlue', x: rng.range(14, 19), rotY: rng.range(-1.2, 1.2) });
-      else if (r < 0.58) out.push({ kind: 'heapS', x: rng.range(17, 24), rotY: rng.range(0, 6), scale: rng.range(0.8, 1.2) });
-      else if (r < 0.66) out.push({ kind: rng.chance(0.5) ? 'crate' : 'barrel', x: rng.range(13.5, 17), rotY: rng.range(0, 6) });
+      if (r < 0.2) out.push({ kind: 'belt', x: 17.5, rotY: 0, abs: true });
+      else if (r < 0.34) out.push({ kind: 'clip', x: rng.range(16, 21), rotY: rng.range(-1.2, 1.2), scale: rng.range(0.85, 1.2), abs: true });
+      else if (r < 0.42) out.push({ kind: rng.chance(0.5) ? 'clipPink' : 'clipBlue', x: rng.range(16, 21), rotY: rng.range(-1.2, 1.2), abs: true });
+      else if (r < 0.58) out.push({ kind: 'heapS', x: rng.range(20, 26), rotY: rng.range(0, 6), scale: rng.range(0.8, 1.2), abs: true });
+      else if (r < 0.74) out.push({ kind: rng.chance(0.5) ? 'boxes1' : 'boxes2', x: rng.range(15.5, 18), rotY: rng.range(-0.6, 0.6), abs: true });
     }
     const l = rng();
     if (Math.abs(t - 102.0) > 0.5) {
-      if (l < 0.18) out.push({ kind: 'heapS', x: -rng.range(17, 26), rotY: rng.range(0, 6), scale: rng.range(0.8, 1.3) });
-      else if (l < 0.34) out.push({ kind: 'clip', x: -rng.range(14, 19), rotY: rng.range(-1.2, 1.2) });
-      else if (l < 0.42) out.push({ kind: 'belt', x: -16.5, rotY: 0 });
+      if (l < 0.18) out.push({ kind: 'heapS', x: -rng.range(20, 28), rotY: rng.range(0, 6), scale: rng.range(0.8, 1.3), abs: true });
+      else if (l < 0.34) out.push({ kind: 'clip', x: -rng.range(16, 21), rotY: rng.range(-1.2, 1.2), abs: true });
+      else if (l < 0.42) out.push({ kind: 'belt', x: -18, rotY: 0, abs: true });
+      else if (l < 0.52) out.push({ kind: 'boxes2', x: -rng.range(16, 18.5), rotY: rng.range(-0.6, 0.6), abs: true });
     }
-    // mountains of clips + the factory skyline
+    // mid distance: factory halls side-on to the road, tower cranes, clip mountains
+    if (every(rel, 60, 20)) {
+      const k = Math.floor((rel - 20) / 60), side = k % 2 ? -1 : 1, x = side * rng.range(46, 62);
+      if (clearOfRoad(zf, x, 30)) out.push({ kind: 'hall' + (k % 5), x, rotY: -side * (Math.PI / 2 - 0.3), abs: true });
+    }
+    if (every(rel, 90, 50)) {
+      const k = Math.floor((rel - 50) / 90), side = k % 2 ? 1 : -1, x = side * rng.range(38, 52);
+      if (clearOfRoad(zf, x, 8)) out.push({ kind: 'tcrane', x, rotY: (side > 0 ? 0 : Math.PI) + rng.range(-0.25, 0.25), abs: true });
+    }
     if (rng.chance(0.3)) {
       const side = rng.chance(0.5) ? -1 : 1, x = side * rng.range(34, 70), s = rng.range(0.8, 1.5);
-      if (clearOfRoad(zf, x, 17 * s)) out.push({ kind: 'heapL', x, rotY: rng.range(0, 6), scale: s });
+      if (clearOfRoad(zf, x, 17 * s)) out.push({ kind: 'heapL', x, rotY: rng.range(0, 6), scale: s, abs: true });
     }
-    if (every(rel, 150, 10)) {
-      const side = Math.floor((rel - 10) / 150) % 2 ? -1 : 1, x = side * rng.range(80, 110);
-      if (clearOfRoad(zf, x, 45)) out.push({ kind: 'factory', x, rotY: -side * 0.35 + rng.range(-0.2, 0.2) });
+    if (every(rel, 70, 30)) {
+      const side = rng.chance(0.5) ? -1 : 1, x = side * rng.range(120, 210), s = rng.range(0.85, 1.25);
+      if (clearOfRoad(zf, x, 50 * s)) out.push({ kind: 'mount', x, rotY: rng.range(0, 6), scale: s, abs: true });
     }
-    if (every(rel, 150, 85)) {
-      const side = Math.floor((rel - 85) / 150) % 2 ? 1 : -1, x = side * rng.range(110, 170);
-      if (clearOfRoad(zf, x, 50)) out.push({ kind: 'plant', x, rotY: -side * 0.4 });
+    // the factory skyline
+    if (every(rel, 120, 10)) {
+      const side = Math.floor((rel - 10) / 120) % 2 ? -1 : 1, x = side * rng.range(90, 120);
+      if (clearOfRoad(zf, x, 45)) out.push({ kind: 'factory', x, rotY: -side * 0.35 + rng.range(-0.2, 0.2), abs: true });
+    }
+    if (every(rel, 120, 70)) {
+      const side = Math.floor((rel - 70) / 120) % 2 ? 1 : -1, x = side * rng.range(120, 170);
+      if (clearOfRoad(zf, x, 50)) out.push({ kind: 'plant', x, rotY: -side * 0.4, abs: true });
     }
     return out;
   },
@@ -945,8 +1172,13 @@ export default {
       case 'clipBlue': return giantClip('#5fb8ff');
       case 'heapS': return heap(5.5, 4.2, 110, 11);
       case 'heapL': return heap(16, 13, 400, 23);
-      case 'crate': return model('wooden_crate_01', { size: 2.2 });
-      case 'barrel': return model('Barrel_01', { size: 1.7 });
+      case 'boxes1': return boxes(1);
+      case 'boxes2': return boxes(2);
+      case 'rail': return rail();
+      case 'hall0': case 'hall1': case 'hall2': case 'hall3': case 'hall4': return hall(+kind[4]);
+      case 'tcrane': return towerCrane();
+      case 'gcrane': return gantryCrane();
+      case 'mount': return heap(58, 50, 640, 37, 3.8);
       case 'factory': return factory();
       case 'plant': return coolingTower();
     }
@@ -1029,7 +1261,7 @@ export default {
         u.inst.instanceMatrix.needsUpdate = true;
         break;
       }
-      case 'heapS': case 'heapL':
+      case 'heapS': case 'heapL': case 'mount':
         u.inst.castShadow = false; // the solid core casts the shadow; thousands of clips don't need to
         break;
       case 'lampR': case 'lampL': {
@@ -1038,7 +1270,7 @@ export default {
           const f = course().frame(e.zf, _fa);
           const side = kind === 'lampR' ? 1 : -1;
           e.bank = f.bank;
-          e.poolY = f.y - Math.sin(f.bank) * side * 7.4 + 0.07 - obj.position.y;
+          e.poolY = f.y - Math.sin(f.bank) * side * 9.0 + 0.07 - obj.position.y;
         }
         u.pool.rotation.z = -e.bank;
         u.pool.position.y = e.poolY;
@@ -1065,7 +1297,7 @@ export default {
       case 'counter':
         if ((t * 10 | 0) !== (u.tk | 0)) { u.tk = t * 10; drawCounter(t); }
         break;
-      case 'factory': case 'plant': {
+      case 'factory': case 'plant': case 'tcrane': case 'gcrane': case 'hall0': case 'hall1': case 'hall2': case 'hall3': case 'hall4': {
         for (const l of u.lights) l.visible = (t + l.position.x * 0.01) % 1.6 < 0.5;
         for (const p of u.puffs) {
           const [x, y, z, off, big] = p.userData.base;

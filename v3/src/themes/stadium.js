@@ -142,9 +142,9 @@ const BOUNCE = `#include <begin_vertex>
 #ifdef USE_INSTANCING
   float cph = fract(instanceMatrix[3].x * 0.731 + instanceMatrix[3].y * 0.313 + instanceMatrix[3].z * 0.197);
   float cb = cph > 0.5 ? uBeat : uBeat2;
-  float arm = step(0.42, abs(position.x)) * step(0.75, position.y);
-  transformed.y += cb * (0.32 + 0.35 * cph) + arm * cb * 0.25;
-  transformed.x += sin(uTime * 3.0 + cph * 30.0) * 0.12 * position.y;
+  float arm = step(0.71, abs(position.x)) * step(1.28, position.y);
+  transformed.y += cb * (0.45 + 0.5 * cph) + arm * cb * 0.4;
+  transformed.x += sin(uTime * 3.0 + cph * 30.0) * 0.07 * position.y;
 #endif`;
 function patchCrowd(m, key, keepColor = true) {
   m.onBeforeCompile = (sh) => {
@@ -177,8 +177,11 @@ const robotGeo = () => once('robotGeo', () => {
     part(G.sphere(0.07, 6), 0, 1.62, 0),
   ]);
   const visor = part(G.box(0.5, 0.15, 0.06), 0, 1.1, 0.28);
-  return mergeGeometries([body, visor], true);
+  const g = mergeGeometries([body, visor], true);
+  g.scale(ROBOT_K, ROBOT_K, ROBOT_K); // v3: spectators ≈ 2.75 tall (MK 1.5 kh)
+  return g;
 });
+const ROBOT_K = 1.7;
 const ROBOT_COLS = ['#ff6b8b', '#ffd23f', '#6ad1ff', '#8aff8a', '#c58bff', '#f4f4f8', '#ff9a3f', '#3f6bff'];
 function crowdMesh(rows, per, rowH, rowD, width, seed) {
   const N = rows * per;
@@ -189,8 +192,8 @@ function crowdMesh(rows, per, rowH, rowD, width, seed) {
   for (let k = 0; k < rows; k++) {
     for (let c = 0; c < per; c++) {
       if (r.chance(0.06)) continue; // empty seats (they went to get GPUs)
-      const x = -width / 2 + 0.6 + c * ((width - 1.2) / (per - 1)) + r.range(-0.15, 0.15);
-      _m4.compose(_v.set(x, (k + 1) * rowH, -k * rowD + 0.35), _q.setFromEuler(_e.set(0, r.range(-0.3, 0.3), 0)), _s3.setScalar(r.range(0.9, 1.1)));
+      const x = -width / 2 + 1.0 + c * ((width - 2.0) / (per - 1)) + r.range(-0.2, 0.2);
+      _m4.compose(_v.set(x, (k + 1) * rowH, -k * rowD + 0.55), _q.setFromEuler(_e.set(0, r.range(-0.3, 0.3), 0)), _s3.setScalar(r.range(0.9, 1.1)));
       im.setMatrixAt(i, _m4);
       im.setColorAt(i, col.set(r.pick(ROBOT_COLS)));
       i++;
@@ -209,7 +212,8 @@ function crowdMesh(rows, per, rowH, rowD, width, seed) {
 // =====================================================================================================
 // grandstand (36 m section) — tiers, rails, roof canopy with downlights, LED ribbon, robot crowd
 // =====================================================================================================
-const ST = { W: 36, ROWS: 9, RH: 0.95, RD: 1.45 };
+// v3: rows sized for 2.75-tall robots → a 10-row stand is ≈ 16 tall at the back, roof ≈ 24 (MK circuit grandstands)
+const ST = { W: 36, ROWS: 10, RH: 1.55, RD: 2.3 };
 function ribbonTex() {
   return once('ribbon', () => {
     const t = canvasTex(2048, 64, (x) => {
@@ -245,37 +249,48 @@ function grandstand(variant) {
     for (let k = 0; k < ROWS; k++) {
       const h = (k + 1) * RH;
       kt.add(G.box(W, h, RD), k % 2 ? step : conc, 0, h / 2, -k * RD);
-      kt.add(G.box(W, 0.32, 0.5), k % 3 === 1 ? seatB : seatA, 0, h + 0.16, -k * RD + 0.2);
+      kt.add(G.box(W, 0.5, 0.8), k % 3 === 1 ? seatB : seatA, 0, h + 0.25, -k * RD + 0.3);
     }
     // front wall + railing
-    kt.add(G.box(W, 1.3, 0.35), dark, 0, 0.65, RD / 2 + 0.2);
-    kt.add(G.cyl(0.06, 0.06, W, 6), MAT.chrome(), 0, 1.6, RD / 2 + 0.25, 0, 0, Math.PI / 2);
-    for (let x = -W / 2; x <= W / 2; x += 3) kt.add(G.cyl(0.05, 0.05, 0.9, 6), MAT.chrome(), x, 1.15, RD / 2 + 0.25);
+    kt.add(G.box(W, 2.0, 0.45), dark, 0, 1.0, RD / 2 + 0.2);
+    kt.add(G.cyl(0.08, 0.08, W, 8), MAT.chrome(), 0, 3.0, RD / 2 + 0.25, 0, 0, Math.PI / 2);
+    for (let x = -W / 2; x <= W / 2; x += 3) kt.add(G.cyl(0.06, 0.06, 1.0, 6), MAT.chrome(), x, 2.5, RD / 2 + 0.25);
     // aisles (stairs)
-    for (const ax of [-W / 4, W / 4]) for (let k = 0; k < ROWS; k++) kt.add(G.box(1.2, 0.12, RD), toon('#f0c040', { roughness: 0.6 }), ax, (k + 1) * RH + 0.02, -k * RD);
+    for (const ax of [-W / 4, W / 4]) for (let k = 0; k < ROWS; k++) kt.add(G.box(1.8, 0.12, RD), toon('#f0c040', { roughness: 0.6 }), ax, (k + 1) * RH + 0.02, -k * RD);
     // back wall and side walls
     const back = -D + RD / 2;
     kt.add(G.box(W + 0.8, ROWS * RH + 6, 0.6), dark, 0, (ROWS * RH + 6) / 2, back - 0.3);
     for (const s of [-1, 1]) kt.add(G.box(0.6, ROWS * RH + 1.2, D + 0.6), conc, s * (W / 2 + 0.3), (ROWS * RH + 1.2) / 2, back + D / 2);
     // roof canopy: columns + cantilever trusses + roof slab
-    const roofY = ROWS * RH + 6.2;
+    const roofY = ROWS * RH + 8;
     for (let x = -W / 2 + 2; x <= W / 2 - 2; x += 8) {
-      kt.add(G.box(0.5, roofY, 0.5), steel, x, roofY / 2, back - 0.2);
-      kt.bar([x, roofY - 3.5, back], [x, roofY + 0.2, back + D * 0.85], 0.3, steel);
+      kt.add(G.box(0.8, roofY, 0.8), steel, x, roofY / 2, back - 0.2);
+      kt.bar([x, roofY - 5, back], [x, roofY + 0.3, back + D * 0.85], 0.45, steel);
     }
-    kt.add(G.box(W + 1.2, 0.4, D + 3), MAT.paint('#e8eaf4'), 0, roofY + 0.3, back + D / 2 + 1, -0.06);
-    kt.add(G.box(W + 1.2, 1.0, 0.4), MAT.paint(NAVY), 0, roofY + 0.0, back + D + 2.4, -0.06);
+    kt.add(G.box(W + 1.2, 0.6, D + 3), MAT.paint('#e8eaf4'), 0, roofY + 0.3, back + D / 2 + 1, -0.06);
+    kt.add(G.box(W + 1.2, 1.6, 0.5), MAT.paint(NAVY), 0, roofY - 0.1, back + D + 2.4, -0.06);
     // downlights under the canopy
-    for (let x = -W / 2 + 3; x < W / 2; x += 4.5) kt.add(G.box(1.6, 0.1, 0.5), glow('#fff2cc', { intensity: 3 }), x, roofY - 0.05, back + D * 0.45);
+    for (let x = -W / 2 + 3; x < W / 2; x += 4.5) kt.add(G.box(2.2, 0.12, 0.7), glow('#fff2cc', { intensity: 3 }), x, roofY - 0.1, back + D * 0.45);
+    // flag poles along the roof edge
+    for (let x = -W / 2 + 3; x < W / 2; x += 6) kt.add(G.cyl(0.1, 0.12, 6, 8), MAT.chrome(), x, roofY + 3.4, back + D + 2.0);
   }));
-  const rb = new THREE.Mesh(G.plane(ST.W, 0.9), once('ribbonMat', () => screenMat(ribbonTex(), 1.4)));
-  rb.position.set(0, 0.7, ST.RD / 2 + 0.39);
+  const rb = new THREE.Mesh(G.plane(ST.W, 1.4), once('ribbonMat', () => screenMat(ribbonTex(), 1.4)));
+  rb.position.set(0, 1.05, ST.RD / 2 + 0.44);
   g.add(rb);
-  const crowd = crowdMesh(ROWS, 30, RH, RD, W - 1.5, 99 + variant * 13);
+  const crowd = crowdMesh(ROWS, 15, RH, RD, W - 1.5, 99 + variant * 13);
   g.add(crowd);
-  const roofSign = textPanel(variant % 2 ? 'LOSS GO DOWN' : 'THE FINAL EVAL', { width: 12, height: 1.9, bg: HOT, fg: '#ffffff', border: '#ffffff', borderW: 8, radius: 14 });
-  roofSign.position.set(0, ROWS * RH + 7.8, -ROWS * RD + ST.RD + D + 2.2);
+  const roofSign = textPanel(variant % 2 ? 'LOSS GO DOWN' : 'THE FINAL EVAL', { width: 16, height: 2.6, bg: HOT, fg: '#ffffff', border: '#ffffff', borderW: 8, radius: 14 });
+  roofSign.position.set(0, ROWS * RH + 10.4, -ROWS * RD + ST.RD + D + 2.4);
   g.add(roofSign);
+  // pennants on the roof poles (one draw)
+  g.add(kit('pennants', (kt) => {
+    const cols = [HOT, GOLD, CYAN, '#8aff8a', '#c58bff', '#ff9a3f'];
+    let i = 0;
+    for (let x = -W / 2 + 3; x < W / 2; x += 6) {
+      const m = toon(cols[i++ % cols.length], { roughness: 0.5 });
+      kt.add(G.cone(0.9, 3.2, 3), m, x + 1.6, ROWS * RH + 8 + 5.6, -ROWS * RD + ST.RD + D + 2.0, 0, 0, Math.PI / 2, 1, 1, 0.12);
+    }
+  }));
   g.userData.crowd = crowd;
   return g;
 }
@@ -576,12 +591,9 @@ function ilyaDoor() {
   const rays = new THREE.Group();
   rays.position.set(0.3, 0, 0.2);
   g.add(rays);
-  const floor = mesh(G.plane(4.4, 8), additive('#fff3b0', 0.2), 0.4, 0.05, 4.2);
+  const floor = mesh(G.plane(4.4, 8), additive('#fff3b0', 0.11), 0.4, 0.05, 4.2);
   floor.rotation.x = -Math.PI / 2;
   rays.add(floor);
-  const shaft = mesh(G.cyl(2.6, 1.5, 8, 4, 1, true), additive('#fff6c8', 0.07), 0.4, 3.0, 4.2);
-  shaft.rotation.set(Math.PI / 2, Math.PI / 4, 0);
-  rays.add(shaft);
   const glare = glareSprite('#fff3c0', 0.5, 5);
   glare.position.set(0.2, 3.1, 0.4);
   g.add(glare);
@@ -795,20 +807,63 @@ function fitTurfSkirt(obj, zf) {
 // overhead hurdle banner before the hop over the leak pool
 // =====================================================================================================
 function hurdle() {
+  // v3: an MK-style arch over the road: posts outside ±14.5 (road ±10.5, kerbs ±11.8), beam ≈ 15 up
   const g = new THREE.Group();
+  const X = 14.6, Y = 15;
   g.add(kit('hurdle', (kt) => {
-    const post = MAT.paint('#f2f2fa'), stripe = MAT.paint('#d8273f');
+    const post = MAT.paint('#f2f2fa'), stripe = MAT.paint('#d8273f'), gold = MAT.metal('#ffcf4a', { roughness: 0.2 });
     for (const s of [-1, 1]) {
-      kt.add(G.cyl(0.45, 0.5, 11, 16), post, s * 11.5, 5.5, 0);
-      for (let k = 0; k < 5; k++) kt.add(G.cyl(0.47, 0.52, 1.0, 16), stripe, s * 11.5, 1 + k * 2.2, 0);
-      kt.add(G.sphere(0.7, 12), MAT.metal('#ffcf4a', { roughness: 0.2 }), s * 11.5, 11.3, 0);
+      kt.add(G.cyl(0.85, 0.95, Y + 1.5, 24), post, s * X, (Y + 1.5) / 2, 0);
+      for (let k = 0; k < 6; k++) kt.add(G.cyl(0.89, 0.99, 1.2, 24), stripe, s * X, 1.2 + k * 2.6, 0);
+      kt.add(G.cyl(1.6, 1.9, 1.0, 24), surface('concrete', { tint: '#9a9cac', scale: 0.5 }), s * X, 0.5, 0);
+      kt.add(G.sphere(1.2, 20), gold, s * X, Y + 2.2, 0);
     }
-    kt.add(G.rbox(24, 0.6, 0.6, 0.2), post, 0, 10, 0);
+    kt.add(G.rbox(2 * X + 2, 1.0, 1.0, 0.3), post, 0, Y + 0.6, 0);
+    kt.add(G.rbox(2 * X + 2, 0.6, 0.8, 0.25), stripe, 0, Y - 6.4, -0.1);
+    // bulb row on the beam (one emissive strip)
+    kt.add(G.box(2 * X - 1, 0.25, 0.1), glow('#fff2c0', { intensity: 3 }), 0, Y + 0.6, 0.55);
   }));
-  const banner = textPanel(['BENCHMARK LEAK AHEAD', '▲ JUMP IT (don\'t look down) ▲'], { width: 19, height: 3.8, bg: GOLD, fg: INK, border: INK, borderW: 12, radius: 18 });
-  banner.position.set(0, 7.7, 0.35);
+  const banner = textPanel(['BENCHMARK LEAK AHEAD', '▲ JUMP IT (don\'t look down) ▲'], { width: 26, height: 5.2, bg: GOLD, fg: INK, border: INK, borderW: 12, radius: 18 });
+  banner.position.set(0, Y - 3.1, 0.45);
   g.add(banner);
   return g;
+}
+
+// =====================================================================================================
+// LED totem pylons around the infield: tall glowing columns with live "stats" (bloom accents, cheap)
+// =====================================================================================================
+const PYLON_MSGS = [['SOTA', '101.7%', GOLD], ['VIBES', 'MAXIMAL', HOT], ['LOSS', '0.000', CYAN], ['P(DOOM)', 'LIVE ↑', '#ff9a3f'], ['HUMANS', 'COPING', '#8aff8a']];
+function pylon(i) {
+  const g = new THREE.Group();
+  g.add(kit('pylon', (kt) => {
+    const body = MAT.paint('#14163a'), rim = MAT.metal('#c8ccd8', { roughness: 0.25 });
+    kt.add(G.rbox(4.2, 14, 1.6, 0.4), body, 0, 7.4, 0);
+    kt.add(G.rbox(4.8, 0.8, 2.2, 0.3), rim, 0, 0.4, 0);
+    kt.add(G.rbox(4.6, 0.5, 2.0, 0.2), rim, 0, 14.6, 0);
+  }));
+  const [a, b, col] = PYLON_MSGS[i % PYLON_MSGS.length];
+  const tex = once('pylonTex' + i, () => canvasTex(256, 768, (x) => {
+    x.fillStyle = '#05061a'; x.fillRect(0, 0, 256, 768);
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillStyle = col; x.fillRect(16, 16, 224, 8); x.fillRect(16, 744, 224, 8);
+    x.font = `700 46px ${FONT}`; x.fillStyle = '#ffffff'; x.fillText(a, 128, 250);
+    let sz = 64; x.font = `700 ${sz}px ${FONT}`;
+    while (x.measureText(b).width > 230 && sz > 24) { sz -= 4; x.font = `700 ${sz}px ${FONT}`; }
+    x.fillStyle = col; x.fillText(b, 128, 400);
+    x.fillStyle = 'rgba(0,0,0,0.3)'; for (let k = 0; k < 768; k += 4) x.fillRect(0, k, 256, 1);
+  }));
+  const face = new THREE.Mesh(G.plane(3.6, 12.6), once('pylonMat' + i, () => screenMat(tex, 1.5)));
+  face.position.set(0, 7.4, 0.82);
+  g.add(face);
+  return g;
+}
+/** keep an intrinsic scale under the engine's per-placement scale */
+function sized(obj, k) {
+  obj.scale.multiplyScalar(k);
+  const w = new THREE.Group();
+  w.add(obj);
+  w.userData = obj.userData;
+  return w;
 }
 
 // =====================================================================================================
@@ -821,54 +876,53 @@ export default {
     skyTop: '#0a0f3a', skyBottom: '#4656c4', road: '#d9583f', ground: '#3fb04f', kerb: '#ffffff',
     accent1: GOLD, accent2: HOT,
   },
-  look: {
-    sky: 'night', env: 'night', exposure: 1.0, hills: 0, envIntensity: 0.6,
-    sun: { elev: 58, azim: 25, color: '#f6f2ff', intensity: 2.6 },
-    nightColors: { top: '#02030f', horizon: '#1c1a46', nebula: '#3a5cff' },
-    fog: { color: '#121230', density: 0.0024 },
-    ground: { tex: 'grass', tint: '#3d8a3a', scale: 3 }, road: { tex: 'asphalt', tint: '#8a8496' },
-  },
+  // v3: the night sky, floodlit env, fog and road come from the atmosphere pass ('stadium' in looks.js); the infield stays flat
+  look: { hills: 0 },
   spacing: 9,
   layout(zf, rng, sec) {
     const out = [];
     const rel = zf - sec.start * SPEED;
     const row = Math.round(rel / 9);
     const at = (a) => rel >= a && rel < a + 9;
+    const A = (o) => out.push({ abs: true, ...o });
     out.push({ kind: 'turf', x: TURF_X });
     if (at(330)) out.push({ kind: 'turfLong', x: TURF_X }); // the hop: nothing spawns mid-jump, so pre-lay the turf
-    // outer side (right) = grandstands all the way round; distant bowl behind them
-    if (row % 4 === 0) out.push({ kind: 'stand' + (row / 4 % 3 | 0), x: 31, rotY: -(Math.PI / 2 - 0.12) });
-    if (row % 9 === 0) out.push({ kind: 'bowl', x: 78, rotY: -(Math.PI / 2 - 0.15) });
-    // inner side (left): a few stands on the straights, otherwise the infield show
+    // outer side (right) = grandstands all the way round; the distant upper bowl behind them
+    if (row % 4 === 0) A({ kind: 'stand' + (row / 4 % 3 | 0), x: 27, rotY: -(Math.PI / 2 - 0.12) });
+    if (row % 9 === 0) A({ kind: 'bowl', x: 104, rotY: -(Math.PI / 2 - 0.15) });
+    // inner side (left): stands on the straights, otherwise the infield show
     const straight = rel < 150 || (rel > 330 && rel < 400);
-    if (straight && row % 4 === 2) out.push({ kind: 'stand' + (row % 3), x: -31, rotY: Math.PI / 2 - 0.12 });
-    // floodlight masts
-    if (row % 7 === 3) { out.push({ kind: 'mast', x: 46, rotY: -1.1 }); out.push({ kind: 'mast', x: -27, rotY: 1.1 }); }
-    // sponsor hoardings hugging the track edge
-    for (const side of [-1, 1]) if ((row + (side > 0 ? 0 : 1)) % 2 === 0) out.push({ kind: 'board' + ((row * 5 + (side > 0 ? 3 : 0)) % SPONSORS.length), x: side * 12.6, rotY: -side * (Math.PI / 2 - 0.22), data: side }); // data = side
+    if (straight && row % 4 === 2) A({ kind: 'stand' + (row % 3), x: -27, rotY: Math.PI / 2 - 0.12 });
+    // floodlight masts (≈ 45 tall) behind the stands and in the infield
+    if (row % 7 === 3) { A({ kind: 'mast', x: 57, rotY: -1.1 }); A({ kind: 'mast', x: -36, rotY: 1.1 }); }
+    // sponsor hoardings hugging the track edge (≈ 2 tall, MK low walls)
+    for (const side of [-1, 1]) if ((row + (side > 0 ? 0 : 1)) % 2 === 0) A({ kind: 'board' + ((row * 5 + (side > 0 ? 3 : 0)) % SPONSORS.length), x: side * 13.6, rotY: -side * (Math.PI / 2 - 0.22), data: side });
+    // LED totems around the infield on the curves
+    if (!straight && row % 5 === 1) A({ kind: 'pylon' + ((row / 5) | 0) % PYLON_MSGS.length, x: -17.5, rotY: 0.35 });
     // landmarks / gags
-    if (at(40) || at(380)) out.push({ kind: 'jumbo', x: -46, rotY: 0.55 });
-    if (at(230)) out.push({ kind: 'jumbo', x: -40, rotY: 0.75 });
+    if (at(40) || at(380)) A({ kind: 'jumbo', x: -52, rotY: 0.55 });
+    if (at(230)) A({ kind: 'jumbo', x: -46, rotY: 0.75 });
     if (at(300)) out.push({ kind: 'hurdle', x: 0 });
-    if (at(90) || at(450)) out.push({ kind: 'door', x: -17, rotY: 0.6, scale: 1.5 });
-    if (at(170) || at(520)) out.push({ kind: 'loom', x: -24, rotY: 0.55 });
-    if (at(120) || at(560)) out.push({ kind: 'podium', x: -17.5, rotY: 0.6 });
-    if (at(260) || at(480)) out.push({ kind: 'trophy', x: -16, rotY: 0.5 });
-    if (rng.chance(straight ? 0.14 : 0.24)) out.push({ kind: 'confetti', x: -rng.range(14.5, 16), rotY: Math.PI / 2 - 0.3 });
+    if (at(90) || at(450)) A({ kind: 'door', x: -21, rotY: 0.6 });
+    if (at(170) || at(520)) A({ kind: 'loom', x: -28, rotY: 0.55 });
+    if (at(120) || at(560)) A({ kind: 'podium', x: -21, rotY: 0.6 });
+    if (at(260) || at(480)) A({ kind: 'trophy', x: -20, rotY: 0.5 });
+    if (rng.chance(straight ? 0.14 : 0.24)) A({ kind: 'confetti', x: -rng.range(16, 17.5), rotY: Math.PI / 2 - 0.3 });
     return out;
   },
   makeProp(kind) {
     if (kind.startsWith('stand')) return grandstand(+kind.slice(5) || 0);
     if (kind.startsWith('board')) return hoarding(+kind.slice(5) || 0);
+    if (kind.startsWith('pylon')) return pylon(+kind.slice(5) || 0);
     switch (kind) {
-      case 'bowl': return bowl();
+      case 'bowl': return sized(bowl(), 1.55); // upper tier ≈ 80 tall: the skyline landmark
       case 'mast': return floodlight();
-      case 'jumbo': return jumbotron();
+      case 'jumbo': return sized(jumbotron(), 1.25);
       case 'confetti': return confettiCannon();
-      case 'door': return ilyaDoor();
+      case 'door': return sized(ilyaDoor(), 1.9); // a monument-sized door (≈ 12 tall) with the sign at ≈ 15
       case 'loom': return loom();
-      case 'trophy': return trophy();
-      case 'podium': return podium();
+      case 'trophy': return sized(trophy(), 1.3);
+      case 'podium': return sized(podium(), 1.15);
       case 'hurdle': return hurdle();
       case 'turf': return turf();
       case 'turfLong': return turf(72, -34);
@@ -888,7 +942,8 @@ export default {
       ud.zf = entry.zf;
       if (kind.startsWith('turf')) fitTurfSkirt(obj, entry.zf);
       else if (ud.lift) {
-        const h = Math.max(0, roadRise(entry.zf, (entry.data || 1) * 10.6));
+        // v3: the engine's ground already follows the banked road edge out to ±14.5, so the boards sit flush on it
+        const h = 0;
         ud.lift.position.y = h;
         ud.skirt.visible = h > 0.3;
         ud.skirt.scale.y = Math.max(0.01, h + 0.3);

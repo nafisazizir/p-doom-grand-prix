@@ -403,9 +403,115 @@ function buildBay(k, P, o) {
     }
     k.add(cachedGeo('puddle', () => new THREE.CircleGeometry(1, 24).rotateX(-PI / 2)), 'glow', '#ff6a1a', [0, 0.19, 1.3], O3, [6.0, 1, 0.8]);
   }
+  if (o.v === 'gpu') giantGpu(k, P);
+  if (o.v === 'maint') maintBay(k, P);
   if (o.pipes) floorPipes(k, P);
   if (o.fence) fenceRun(k, P, seed);
   overhead(k, P);
+}
+
+// ---- v3: human-scale clutter + one huge toy GPU (MK: oversized props next to kart-sized details) ----
+function crateTex() {
+  return canvasTex('dcCrate', 512, 256, (x, W, H) => {
+    x.fillStyle = '#d9b27a'; x.fillRect(0, 0, W, H);
+    x.fillStyle = 'rgba(120,80,30,0.25)';
+    for (let i = 0; i < 8; i++) x.fillRect(0, i * 32 + 30, W, 2);
+    x.strokeStyle = '#1a1a1a'; x.lineWidth = 8; x.strokeRect(16, 16, W - 32, H - 32);
+    x.fillStyle = '#1a1a1a'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.font = `700 70px ${FONT}`; x.fillText('8× H100', W / 2, 78);
+    x.font = `700 34px ${FONT}`; x.fillText('FRAGILE · THIS WAY UP ↑', W / 2, 150);
+    x.fillStyle = '#c0141f'; x.font = `700 30px ${FONT}`; x.fillText('DO NOT TRAIN ON', W / 2, 200);
+  });
+}
+function gpuLabelTex(hot) {
+  return canvasTex('dcGpuLbl' + (hot ? 'H' : 'C'), 1024, 256, (x, W, H) => {
+    x.clearRect(0, 0, W, H);
+    x.textAlign = 'left'; x.textBaseline = 'middle';
+    x.fillStyle = hot ? '#ffb04a' : '#e8f4ff';
+    x.font = `800 96px ${FONT}`; x.fillText(hot ? 'RTX 9090 Ti TOASTED' : 'RTX 9090 Ti SUPER', 20, 80);
+    x.fillStyle = hot ? '#ff5a2a' : '#5dffb0';
+    x.font = `700 54px ${FONT}`; x.fillText(hot ? 'thermal throttling: no' : '1 of 1 · shown actual size', 24, 186);
+  });
+}
+/** a delivery robot, ≈1.5 kh tall (MK spectators), facing the road */
+function techBot(k, P, x, z, tint) {
+  const c = tint || (P.hot ? '#ff9a3a' : '#e8eef6');
+  k.cyl(0.62, 0.7, 0.32, 18, 'rubber', '#202228', [x, 0.36, z]);
+  k.rbox(1.25, 1.35, 1.0, 0.36, 'paint', c, [x, 1.2, z]);
+  k.box(0.9, 0.5, 0.06, 'glow', P.leds[1], [x, 1.35, z + 0.5], O3, 'ledA');
+  k.rbox(1.0, 0.72, 0.85, 0.3, 'paint', c, [x, 2.3, z]);
+  k.box(0.72, 0.3, 0.05, 'paint', '#0a0c10', [x, 2.32, z + 0.43]);
+  for (const ex of [-0.17, 0.17]) k.sphere(0.07, 8, 'glow', P.hot ? '#ffb020' : '#7ff6ff', [x + ex, 2.34, z + 0.46]);
+  k.cyl(0.03, 0.03, 0.4, 6, 'chrome', '#ffffff', [x + 0.3, 2.85, z]);
+  k.sphere(0.08, 8, 'glow', '#ff4a4a', [x + 0.3, 3.08, z], I3s, 'ledB');
+  k.add(G.capsule(0.11, 0.6), 'paint', c, [x - 0.75, 1.35, z + 0.15], [0.4, 0, 0.35]);
+  k.add(G.capsule(0.11, 0.6), 'paint', c, [x + 0.75, 1.35, z + 0.2], [0.6, 0, -0.3]);
+}
+function cone1(k, x, z) {
+  k.cone(0.42, 1.1, 14, 'plastic', '#ff6a1a', [x, 0.75, z]);
+  k.box(0.95, 0.12, 0.95, 'plastic', '#ff6a1a', [x, 0.26, z]);
+  k.cyl(0.3, 0.36, 0.14, 14, 'paint', '#ffffff', [x, 0.82, z]);
+}
+function maintBay(k, P) {
+  // rack 1–2 gap: an install in progress. Crates, a cable drum, cones and a robot tech for scale.
+  const lbl = litPanelMat(crateTex(), { alphaTest: 0, side: THREE.FrontSide });
+  const crates = [[-2.6, 0.2, -0.3, 0], [-1.0, 0.2, -0.5, 0.1], [-1.9, 1.82, -0.4, -0.08]];
+  for (const [cx, cy, cz, ry] of crates) {
+    k.rbox(1.6, 1.6, 1.6, 0.08, 'wood', '#c99a5a', [cx, cy + 0.8, cz], [0, ry, 0]);
+    k.add(G.plane(1.5, 0.75), lbl, '#ffffff', [cx + Math.sin(ry) * 0.81, cy + 0.85, cz + Math.cos(ry) * 0.81], [0, ry, 0]);
+  }
+  // cable drum
+  k.cyl(1.05, 1.05, 0.16, 24, 'wood', '#a8743a', [1.6, 1.05, -0.9], [PI / 2, 0, 0]);
+  k.cyl(1.05, 1.05, 0.16, 24, 'wood', '#a8743a', [1.6, 1.05, 0.2], [PI / 2, 0, 0]);
+  k.cyl(0.78, 0.78, 1.0, 24, 'paint', '#3f8cff', [1.6, 1.05, -0.35], [PI / 2, 0, 0]);
+  techBot(k, P, 0.2, 0.7);
+  cone1(k, -3.2, 1.25); cone1(k, 2.9, 1.3);
+  // a scissor lift halfway through installing a rack
+  k.rbox(2.6, 0.5, 1.8, 0.1, 'paint', '#f2b21a', [-0.5, 0.45, -1.6]);
+  for (const s of [-1, 1]) for (let i = 0; i < 3; i++) k.box(2.4, 0.12, 0.12, 'paint', '#3a3a3a', [-0.5, 1.0 + i * 0.9, -1.6 + s * 0.8], [0, 0, (i % 2 ? 1 : -1) * 0.55]);
+  k.rbox(2.6, 0.25, 1.8, 0.06, 'paint', '#f2b21a', [-0.5, 3.6, -1.6]);
+  k.rbox(2.2, 2.6, 1.4, 0.1, 'paint', P.body, [-0.5, 5.0, -1.6], [0, 0, 0.04]);
+}
+function giantGpu(k, P) {
+  const hot = P.hot;
+  const L = 13.2, H = 5.6, y0 = 1.25, zc = -0.9;
+  const cy = y0 + H / 2;
+  for (const x of [-4.8, 4.8]) {
+    k.rbox(1.4, 1.1, 2.8, 0.15, 'paint', P.trim, [x, 0.75, zc]);
+    k.box(1.6, 0.2, 0.2, 'glow', P.strip, [x, 0.45, zc + 1.42]);
+  }
+  // PCB + gold fingers (it's plugged into nothing: the slot would be the size of a house)
+  k.box(L + 0.5, H + 0.7, 0.16, 'paint', hot ? '#2a3a20' : '#1f6a44', [0, cy + 0.05, zc - 0.78]);
+  for (let i = 0; i < 26; i++) k.box(0.16, 0.42, 0.05, 'metal', '#f0c050', [-3.8 + i * 0.3, y0 - 0.34, zc - 0.78]);
+  // shroud: smooth gunmetal with chrome trim and a bright accent stripe
+  k.rbox(L, H, 1.3, 0.5, 'paint', hot ? '#2a2220' : '#30343e', [0, cy, zc]);
+  k.rbox(L - 0.2, 0.34, 1.38, 0.15, 'chrome', P.pipe, [0, y0 + H - 0.42, zc]);
+  k.rbox(L - 0.2, 0.34, 1.38, 0.15, 'chrome', P.pipe, [0, y0 + 0.42, zc]);
+  k.box(L - 1.2, 0.1, 0.05, 'glow', hot ? '#ff5a1f' : '#ff4fd8', [0, y0 + H - 0.05, zc + 0.67], O3, 'rgb');
+  for (const i of [-1, 0, 1]) {
+    const x = i * 4.25;
+    k.add(G.torus(1.9, 0.17, 40), 'chrome', P.pipe, [x, cy, zc + 0.66]);
+    k.cyl(1.86, 1.86, 0.1, 40, 'paint', '#05070a', [x, cy, zc + 0.6], [PI / 2, 0, 0]);
+    k.add(G.torus(1.68, 0.05, 40), 'glow', hot ? '#ff7a1f' : '#2fe6ff', [x, cy, zc + 0.72], O3, I3s, 'rgb');
+  }
+  // one spinning rotor (instanced 3× in bay())
+  for (let b = 0; b < 9; b++) {
+    const a = (b / 9) * PI * 2;
+    k.rbox(0.95, 1.55, 0.06, 0.08, 'paint', hot ? '#5a4038' : '#6a7686', [Math.sin(a) * 0.98, Math.cos(a) * 0.98, 0], [0, 0.45, -a], 'gfan');
+  }
+  k.cyl(0.55, 0.55, 0.22, 24, 'paint', '#14161c', [0, 0, 0.06], [PI / 2, 0, 0], 'gfan');
+  k.cyl(0.3, 0.3, 0.05, 24, 'glow', hot ? '#ff7a1f' : '#5dffb0', [0, 0, 0.18], [PI / 2, 0, 0], 'gfan');
+  // power connector + four fat cables up into the tray
+  k.rbox(1.3, 0.6, 0.8, 0.12, 'paint', '#111216', [4.6, y0 + H + 0.28, zc]);
+  for (let i = 0; i < 4; i++) {
+    const x = 4.2 + i * 0.26;
+    k.tube([x, y0 + H + 0.5, zc], [x + 0.2, y0 + H + 2.0, zc - 0.2], 0.1, 8, 'rubber', '#16181e');
+    k.tube([x + 0.2, y0 + H + 2.0, zc - 0.2], [x - 0.6, 10.3, -1.0], 0.1, 8, 'rubber', '#16181e');
+  }
+  if (hot) for (let i = 0; i < 6; i++) k.add(G.capsule(0.08, 0.5 + hsh(i, 2)), 'glowHot', '#ff7a1a', [-5 + i * 1.9, y0 + 0.1, zc + 0.68]);
+  // the name plate stands on the card's top edge
+  k.rbox(6.9, 1.85, 0.22, 0.12, 'paint', '#0b0e14', [-2.2, 7.65, -0.42]);
+  for (const x of [-4.6, 0.2]) k.box(0.18, 0.5, 0.18, 'chrome', P.pipe, [x, 6.75, -0.45]);
 }
 
 // ---- soot + melt post-processing (fire variants) ----
@@ -449,12 +555,37 @@ function bay(P, kind) {
     ext: { v: 'racks', seed: 9, fence: false, gaps: [2] },
     fine: { v: 'racks', seed: 10, fence: false, gaps: [1, 2] },
     dense: { v: 'racks', seed: 11, fence: true, gaps: [1] },
+    gpu: { v: 'gpu', seed: 14, pipes: !hot, fence: hot, gaps: [0, 1, 2, 3] },
+    maint: { v: 'maint', seed: 15, pipes: !hot, fence: hot, gaps: [1, 2] },
   }[kind];
   const g = kitProp((hot ? 'H' : 'C') + kind, (k) => buildBay(k, P, spec), hot ? sootPost(!!spec.melt) : null);
   const u = g.userData;
   const parts = u.parts;
   if (parts.blades) { parts.blades.position.set(0, 5.6, -3.0); u.blades = parts.blades; u.rgb = parts.rgb; }
   if (parts.liquid) u.liquid = parts.liquid;
+  if (parts.gfan) {
+    // three rotors share one baked geometry
+    const src = parts.gfan;
+    u.fans = [-4.25, 0, 4.25].map((x, i) => {
+      const f = i === 1 ? src : new THREE.Group();
+      if (i !== 1) { for (const m of src.children) f.add(new THREE.Mesh(m.geometry, m.material)); g.add(f); }
+      f.position.set(x, 1.25 + 2.8, -0.9 + 0.66);
+      return f;
+    });
+    u.rgb = parts.rgb;
+    const lbl = new THREE.Mesh(G.plane(6.4, 1.6), cachedGeo('gpuLblMat' + hot, () => { const m = new THREE.MeshBasicMaterial({ map: gpuLabelTex(hot), transparent: true, depthWrite: false }); m.color.setScalar(1.3); return m; }));
+    lbl.position.set(-2.2, 7.65, -0.25);
+    g.add(lbl);
+    const tag = textPanel(hot ? ['12-PIN CONNECTOR', 'melting: yes'] : ['12-PIN CONNECTOR', 'melting: optional'], { width: 2.6, height: 1.1, bg: '#ffd23f', fg: '#2b1840', border: '#2b1840', borderW: 8, radius: 12 });
+    tag.position.set(6.2, 8.7, -0.3);
+    tag.rotation.z = -0.1;
+    g.add(tag);
+  }
+  if (kind === 'maint') {
+    const s = textPanel(['INSTALL IN PROGRESS', 'ETA: 2 weeks (said 3 years ago)'], { width: 4.6, height: 1.2, bg: '#ffffff', fg: '#2b1840', border: '#f2b21a', borderW: 10, radius: 12 });
+    s.position.set(0.2, 4.0, 0.95);
+    g.add(s);
+  }
 
   // ---- holograms (screens angled towards the oncoming driver) ----
   if (kind.startsWith('holo')) {
@@ -488,10 +619,11 @@ function bay(P, kind) {
       ext: [[-5.5, RACK_TOP, 0, 1.1], [5.5, RACK_TOP, 0, 0.8]],
       fine: [[-5.5, RACK_TOP, 0, 1.4], [5.5, RACK_TOP, 0, 1.5], [0, 0.2, -1.6, 1.0], [-2.6, 0.2, 1.0, 0.6]],
       dense: [[5.4, RACK_TOP, 0, 1.2], [-5.4, RACK_TOP, 0, 0.9]],
+      gpu: [[-4.6, 7.0, -0.9, 1.0], [4.6, 7.5, -0.9, 1.4], [0.6, 7.0, -1.0, 0.7]],
     }[kind] || [];
     if (spots.length) g.add(flames('bay' + kind, spots.map(([x, y, z, s]) => [x, y - 0.1, z, s])));
     if (spots.length) g.add(particles('emb' + kind, 'ember', spots.map(([x, y, z, s]) => [x, y + 1.2, z, s * 1.6]), 14));
-    if (kind === 'melt' || kind === 'trans' || kind === 'fine') g.add(particles('smk' + kind, 'smoke', spots.map(([x, y, z]) => [x, y + 2.2, z - 0.3, 1.0]), 6));
+    if (kind === 'melt' || kind === 'trans' || kind === 'fine' || kind === 'gpu') g.add(particles('smk' + kind, 'smoke', spots.map(([x, y, z]) => [x, y + 2.2, z - 0.3, 1.0]), 6));
     if (kind === 'trans') g.add(particles('spk' + kind, 'spark', [[0, 9.4, -2.6, 3], [-0.4, 6.2, -2.6, 3]], 16));
     if (kind === 'tank' || kind === 'dense') {
       const b = alarmBeacon('#ff2a2a', 0.5);
@@ -640,6 +772,89 @@ function gantry(P) {
   }
   return g;
 }
+// ---- v3: the hall's structural portal frames (MK factory tunnels: huge painted lattice pillars + truss beams) ----
+let _shaftMat = null;
+function shaftMat(hot) {
+  _shaftMat ||= {};
+  if (_shaftMat[hot]) return _shaftMat[hot];
+  const tex = canvasTex('dcShaft', 8, 128, (x, W, H) => {
+    const gr = x.createLinearGradient(0, 0, 0, H);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,255,255,0.5)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = gr; x.fillRect(0, 0, W, H);
+  });
+  const m = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(hot ? '#ff8a4a' : '#9ff4ff').multiplyScalar(hot ? 0.032 : 0.085), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  return (_shaftMat[hot] = m);
+}
+const PX = 12.75, PTOP = 12.9; // column centre (between the kerb and the rack fronts), underside of the truss
+function portal(P) {
+  const hot = P.hot;
+  const g = kitProp('portal' + (hot ? 'H' : 'C'), (k) => {
+    const col = hot ? '#4a3026' : '#f0b01c';
+    const dark = hot ? '#1e1512' : '#263040';
+    const hi = PTOP + 1.7;
+    for (const s of [-1, 1]) {
+      const x = s * PX;
+      // plinth (the floor pipes pass through its clamp) with a hazard band
+      k.rbox(1.5, 1.9, 1.7, 0.14, 'paint', dark, [x, 0.95, 0]);
+      for (let i = 0; i < 4; i++) k.box(1.54, 0.2, 1.74, 'paint', i % 2 ? '#15161a' : '#f2c020', [x, 1.2 + i * 0.2, 0]);
+      // lattice column: four chords + zig-zag braces on the faces you can see
+      for (const dx of [-0.4, 0.4]) for (const dz of [-0.4, 0.4]) k.box(0.24, hi + 0.2 - 1.9, 0.24, 'paint', col, [x + dx, 1.9 + (hi + 0.2 - 1.9) / 2, dz]);
+      for (let y = 1.9, i = 0; y < hi - 0.5; y += 1.45, i++) {
+        const y1 = Math.min(hi, y + 1.45);
+        k.tube([x - 0.4, y, 0.4], [x + 0.4, y1, 0.4], 0.075, 6, 'paint', col);
+        k.tube([x - s * 0.4, y, -0.4], [x - s * 0.4, y1, 0.4], 0.075, 6, 'paint', col);
+        k.box(0.9, 0.1, 0.9, 'paint', col, [x, y, 0]);
+      }
+      // knee brace + gusset into the truss
+      k.tube([x - s * 0.4, PTOP - 3.4, 0], [x - s * 4.6, PTOP + 0.05, 0], 0.2, 12, 'paint', col);
+      k.tube([x - s * 0.4, PTOP - 1.6, 0], [x - s * 2.4, PTOP + 0.05, 0], 0.12, 10, 'paint', col);
+      // eye-level details: a column number plate and the big red button
+      k.rbox(1.0, 0.7, 0.12, 0.06, 'paint', '#f4f4f0', [x, 4.2, 0.52]);
+      k.rbox(0.9, 1.1, 0.5, 0.1, 'paint', '#d8202a', [x - s * 0.5, 2.9, 0.62]);
+      k.cyl(0.24, 0.26, 0.2, 18, 'paint', '#ff2a2a', [x - s * 0.5, 3.0, 0.92], [PI / 2, 0, 0]);
+    }
+    // the truss beam
+    const L = 2 * PX + 1.0;
+    k.rbox(L, 0.32, 1.0, 0.08, 'paint', col, [0, PTOP, 0]);
+    k.rbox(L, 0.32, 1.0, 0.08, 'paint', col, [0, hi, 0]);
+    for (let x = -PX + 0.2, i = 0; x < PX - 0.6; x += 1.7, i++) {
+      for (const z of [-0.42, 0.42]) k.tube([x, PTOP + 0.1, z], [x + 1.7, hi - 0.1, z], 0.08, 6, 'paint', col);
+      k.box(0.14, hi - PTOP, 0.9, 'paint', col, [x, (PTOP + hi) / 2, 0]);
+    }
+    // LED strip + three spot lamps under the truss
+    k.box(L - 3, 0.1, 0.12, 'glow', P.strip, [0, PTOP - 0.2, 0.42]);
+    for (const x of [-7, 0, 7]) {
+      k.cyl(0.42, 0.62, 0.7, 18, 'paint', dark, [x, PTOP - 0.5, 0]);
+      k.cyl(0.55, 0.55, 0.05, 18, 'glow', hot ? '#ffb070' : '#eaffff', [x, PTOP - 0.87, 0]);
+    }
+    if (hot) {
+      // heat-glowing seams where the paint burned off
+      for (const s of [-1, 1]) k.box(0.1, 5.5, 0.1, 'glowHot', '#ff6a1a', [s * (PX - 0.4), 9.0, 0.42]);
+      k.box(9, 0.08, 0.1, 'glowHot', '#ff6a1a', [-3, PTOP + 0.18, 0.52]);
+    }
+  }, hot ? sootPost(false) : null);
+  // soft light shafts from the three spots (one merged additive mesh)
+  const sh = new THREE.Mesh(cachedGeo('dcShafts', () => {
+    const parts = [-7, 0, 7].map((x) => { const c = new THREE.CylinderGeometry(0.5, 4.6, PTOP - 0.9, 28, 1, true); c.translate(x, (PTOP - 0.9) / 2, 0); return c; });
+    const m = mergeGeometries(parts, false);
+    m.computeBoundingSphere();
+    return m;
+  }), shaftMat(hot));
+  sh.renderOrder = 2;
+  g.add(sh);
+  const plate = textPanel(hot ? 'AISLE 404' : 'AISLE 42 · ROW ∞', { width: 9.0, height: 1.0, bg: hot ? '#2a0a06' : '#0b1d2a', fg: hot ? '#ffb04a' : '#7ff6ff', border: hot ? '#ff5a1f' : '#2fe6ff', borderW: 8, radius: 10 });
+  plate.position.set(0, PTOP + 0.85, 0.56);
+  g.add(plate);
+  if (hot) {
+    g.add(flames('portal', [[-PX, PTOP + 1.9, 0, 1.0], [PX - 3, PTOP + 1.9, 0, 0.8]]));
+    g.add(particles('portalEmb', 'ember', [[-PX, PTOP + 2.5, 0, 2], [PX - 3, PTOP + 2.5, 0, 2]], 12));
+  } else {
+    const epo = textPanel(['EMERGENCY OFF', '(needs board approval)'], { width: 2.4, height: 0.9, bg: '#ffffff', fg: '#b0101a', border: '#b0101a', borderW: 8, radius: 10 });
+    epo.position.set(-PX + 0.5, 3.95, 0.9);
+    g.add(epo);
+  }
+  return g;
+}
 function hangingBoard(k, P, w, h, y) {
   for (const x of [-w / 2 + 1, w / 2 - 1]) k.box(0.12, 17 - y - h / 2, 0.12, 'chrome', P.pipe, [x, y + h / 2 + (17 - y - h / 2) / 2, 0]);
   k.rbox(w, h, 0.5, 0.2, 'paint', P.steel, [0, y, -0.15]);
@@ -770,6 +985,7 @@ function sharedAnimate(obj, kind, t, beatPhase, entry) {
     u.blades.rotation.z = -t * (kind === 'fan' && obj.userData.hotFan ? 18 : 6) - seed * 9;
     if (u.rgb) u.rgb.visible = beatPhase < 0.6;
   }
+  if (u.fans) for (const f of u.fans) f.rotation.z = -t * (obj.userData.hotFan ? 16 : 5) - f.position.x;
   if (u.liquid) {
     const s = 0.75 + 0.25 * (1 - beatPhase) * (1 - beatPhase);
     u.liquid.scale.y = s;
@@ -811,7 +1027,7 @@ export default {
     sky: 'indoor', env: 'industrial', exposure: 0.98,
     sun: { elev: 70, azim: 0, color: '#bfe8ff', intensity: 1.0 },
     nightColors: { top: '#020a12', horizon: '#06202c' },
-    fog: { color: '#03121a', density: 0.0048 },
+    fog: { color: '#082634', density: 0.0052 }, // MK indoor haze: teal, not black
     ground: { tex: 'concrete', tint: '#4a5a66', scale: 6 }, road: { tex: 'tiles', tint: '#7a8c9a', scale: 5 },
     envIntensity: 0.7,
   },
@@ -821,17 +1037,23 @@ export default {
     const rel = zf - sec.start * SPEED;
     const slot = Math.round(zf / SP);
     // overhead: alternate cable gantries, the progress bar and the stable-run board
+    // rhythm along the hall: portal frame · cable gantry · open ceiling (signs take a portal's place)
+    const m = ((slot % 3) + 3) % 3;
     if (rel > 40 && rel < 50 + SP) out.push({ kind: 'stable', x: 0, y: 0, dz: 5 });
     else if (slot % 7 === 3) out.push({ kind: 'progress', x: 0, y: 0, dz: 5 });
     else if (slot % 7 === 6 && rel > 300) out.push({ kind: 'stable', x: 0, y: 0, dz: 5 });
-    else if (slot % 2 === 0) out.push({ kind: 'gantry', x: 0, y: 0, dz: 7 });
+    else if (m === 0 && rel > 20) out.push({ kind: 'portal', x: 0, y: 0, dz: 7, abs: true });
+    else if (m === 1) out.push({ kind: 'gantry', x: 0, y: 0, dz: 7 });
+    const gpuSide = slot % 9 === 4 && rel > 30 ? (slot % 2 ? 1 : -1) : 0;
     for (const side of [-1, 1]) {
       const r = rng();
       let kind = 'bay';
-      if (r < 0.12) kind = 'fan';
-      else if (r < 0.24) kind = 'tank';
-      else if (r < 0.38) kind = (side > 0 ? 'holoR' : 'holoL') + (rng.chance(0.4) ? '2' : '');
-      else if (r < 0.7) kind = 'bay2';
+      if (side === gpuSide) { out.push({ kind: 'gpu', x: side * 12.6, rotY: bayRot(side) }); continue; }
+      if (r < 0.1) kind = 'fan';
+      else if (r < 0.2) kind = 'tank';
+      else if (r < 0.32) kind = (side > 0 ? 'holoR' : 'holoL') + (rng.chance(0.4) ? '2' : '');
+      else if (r < 0.42) kind = 'maint';
+      else if (r < 0.75) kind = 'bay2';
       out.push({ kind, x: side * 12.6, rotY: bayRot(side) });
     }
     return out;
@@ -839,6 +1061,7 @@ export default {
   makeProp(kind) {
     switch (kind) {
       case 'gantry': return gantry(COOL);
+      case 'portal': return portal(COOL);
       case 'progress': return progressSign();
       case 'stable': return stableSign();
       default: return bay(COOL, kind);
@@ -882,12 +1105,15 @@ export const datacenterFire = {
     let gag = false;
     // the big set pieces
     if (!at(40, { kind: 'banner', x: 0, y: 0, dz: 4 }) && !at(250, { kind: 'banner', x: 0, y: 0, dz: 4 }) && !at(140, { kind: 'rlhf', x: 0, y: 0, dz: 4 }) && !at(400, { kind: 'rlhf', x: 0, y: 0, dz: 4 })) {
-      if (slot % 2 === 0) out.push({ kind: 'gantry', x: 0, y: 0, dz: 7 });
+      const m = ((slot % 3) + 3) % 3;
+      if (m === 0 && rel > 20) out.push({ kind: 'portal', x: 0, y: 0, dz: 7, abs: true });
+      else if (m === 1) out.push({ kind: 'gantry', x: 0, y: 0, dz: 7 });
     }
     const gags = [[84, 1, 'fine'], [180, -1, 'ext'], [300, 1, 'dense'], [360, -1, 'fine'], [460, 1, 'ext'], [520, -1, 'dense'], [120, 1, 'trans'], [330, -1, 'trans']];
     for (const side of [-1, 1]) {
       let kind = null;
       for (const [r0, s, kd] of gags) if (s === side && rel > r0 - SP / 2 && rel <= r0 + SP / 2) kind = kd;
+      if (!kind && slot % 11 === 7 && side === (slot % 2 ? 1 : -1)) kind = 'gpu';
       if (!kind) {
         const r = rng();
         if (r < 0.1) kind = 'fan';
@@ -905,9 +1131,10 @@ export const datacenterFire = {
   makeProp(kind) {
     switch (kind) {
       case 'gantry': return gantry(HOT);
+      case 'portal': return portal(HOT);
       case 'banner': return bannerFire();
       case 'rlhf': return rlhfSign();
-      default: { const g = bay(HOT, kind); if (kind === 'fan') g.userData.hotFan = true; return g; }
+      default: { const g = bay(HOT, kind); if (kind === 'fan' || kind === 'gpu') g.userData.hotFan = true; return g; }
     }
   },
   animate: sharedAnimate,

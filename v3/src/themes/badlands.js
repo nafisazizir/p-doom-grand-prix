@@ -9,8 +9,9 @@
 import { THREE, toon, glow, G, mesh, textTexture, roundRect, MAT, FONT, makeRng, clamp } from '../toolkit.js';
 import { surface } from '../textures.js';
 import { model } from '../models.js';
+import { LOOKS } from '../looks.js';
 import { Course, SPEED, ROAD_HALF } from '../course.js';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const SPACING = 10;
 const H = ROAD_HALF; // road half width
@@ -23,24 +24,13 @@ const T_LAND = 77.5;
 const T_HAIR = [80.4, 83.3];
 const T_CLIFF = 88.4;
 
-// ---------- looks: the desert sunset, then golden hour on the clifftop (picked when the section look is applied) ----------
-// env 'dusk' (no HDR sun peak): the 'sunset' HDRI's sun is fixed in world space and reflects off the road / sea as
-// a giant bloom blob wherever the course happens to point at it.
-const DESERT_LOOK = {
-  sky: 'sunset', env: 'dusk', envIntensity: 0.75, exposure: 1.0,
-  sun: { elev: 15, azim: 100, color: '#ffb377', intensity: 3.6 },
-  skyParams: { turbidity: 6, rayleigh: 2.6, mie: 0.009, clouds: 0.28 },
-  fog: { color: '#eaa77a', density: 0.0011 },
-  ground: { tex: 'sand', tint: '#e6a676', scale: 7 }, road: { tex: 'asphalt', tint: '#a08e88' },
-};
-const CLIFF_LOOK = {
-  ...DESERT_LOOK,
-  exposure: 0.95,
-  envIntensity: 0.6,
-  sun: { elev: 9, azim: -104, color: '#ffb35c', intensity: 4.0 },
-  skyParams: { turbidity: 5, rayleigh: 2.2, mie: 0.012, clouds: 0.38 },
-  fog: { color: '#d9a27c', density: 0.0009 },
-};
+// ---------- looks ----------
+// v3: the desert inherits the atmosphere pass's 'badlands' entry in looks.js (sky, haze, clouds, far mesas, fog). The
+// clifftop only swings the low sun out over the sea on the left, so the sunset sits over the ocean.
+const DESERT_LOOK = {};
+const CLIFF_LOOK = { sun: { elev: 9, azim: -104, color: '#ffb35c', intensity: 3.6 } };
+/** the ground material spec the engine uses here (so the apron / dunes / hairpin floor match the terrain) */
+const groundSpec = () => ({ tex: 'sand', tint: '#e8b48a', scale: 7, ...(LOOKS.badlands?.ground || {}) });
 
 // ---------- course access (for set pieces that hug the road) ----------
 let _C = null;
@@ -128,6 +118,29 @@ function fitText(g, text, x, y, maxW, size, weight = 800) {
   g.fillText(text, x, y);
 }
 
+// plain (untextured, non-emissive, opaque) materials fold into shared vertex-colour materials when a prop is baked,
+// so a whole sign / station / pole collapses to a couple of draw calls
+const VCM = new Map();
+function vcKey(mat) {
+  if (!mat || mat.map || mat.transparent || mat.vertexColors || mat.side !== THREE.FrontSide || mat.normalMap) return null;
+  if (mat.isMeshBasicMaterial) return 'basic';
+  if (!mat.isMeshStandardMaterial) return null;
+  if (mat.emissive && mat.emissive.r + mat.emissive.g + mat.emissive.b > 0) return null;
+  if (mat.metalness > 0.5) return 'metal';
+  if (mat.clearcoat > 0 || mat.roughness < 0.3) return 'gloss';
+  return mat.roughness < 0.68 ? 'satin' : 'matte';
+}
+function vcMat(key) {
+  let m = VCM.get(key);
+  if (m) return m;
+  if (key === 'basic') m = new THREE.MeshBasicMaterial({ vertexColors: true });
+  else if (key === 'metal') m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 1 });
+  else if (key === 'gloss') m = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.36, metalness: 0.05, clearcoat: 0.6, clearcoatRoughness: 0.12 });
+  else if (key === 'satin') m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0 });
+  else m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0 });
+  VCM.set(key, m);
+  return m;
+}
 /** Bake a static prop once: merge every mesh by material, return a light-weight group sharing the merged geometry. */
 const bakeCache = new Map();
 function bake(key, build) {
@@ -140,8 +153,16 @@ function bake(key, build) {
       if (!o.isMesh) return;
       const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
       g.applyMatrix4(o.matrixWorld);
-      if (!by.has(o.material)) by.set(o.material, []);
-      by.get(o.material).push(g);
+      let mat = o.material;
+      const vk = vcKey(mat);
+      if (vk) {
+        const n = g.attributes.position.count, arr = new Float32Array(n * 3), c = mat.color;
+        for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
+        g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+        mat = vcMat(vk);
+      }
+      if (!by.has(mat)) by.set(mat, []);
+      by.get(mat).push(g);
     });
     parts = [];
     for (const [mat, gs] of by) {
@@ -165,7 +186,7 @@ function bake(key, build) {
   return g;
 }
 const tintMats = new Map();
-/** CC0 model clone with a shared tinted material */
+/** CC0 model clone with a shared tinted material. Wrapped: the engine overwrites the root's scale on placement. */
 function rmodel(id, size, tint) {
   const o = model(id, { size });
   if (tint) {
@@ -177,7 +198,17 @@ function rmodel(id, size, tint) {
       m.material = t;
     });
   }
-  return o;
+  const w = new THREE.Group();
+  w.add(o);
+  return w;
+}
+/** wrap a prop so it keeps an intrinsic scale (the engine sets the root's scale to the layout's `scale`) */
+function sized(obj, k) {
+  obj.scale.multiplyScalar(k);
+  const w = new THREE.Group();
+  w.add(obj);
+  w.userData = obj.userData;
+  return w;
 }
 const once = (zf, t) => { const z = t * SPEED; return z >= zf && z < zf + SPACING ? z - zf : null; };
 const every = (rel, period, offset = 0) => rel - offset >= 0 && (rel - offset) % period < SPACING;
@@ -197,16 +228,15 @@ function rockV() {
 const STRATA = ['#f3a36c', '#e3804f', '#f8c890', '#cf6740', '#ee9a60', '#d9744a', '#f6b67c', '#bf5a3a'].map((c) => new THREE.Color(c));
 const SEA_ROCK = ['#c9a387', '#b88b6c', '#d8b89a', '#a97c62', '#c29878'].map((c) => new THREE.Color(c));
 function strata(geo, seed = 0, pal = STRATA, band = 3.3, ground = -6) {
+  // v3: coloured per vertex (bands blend over one triangle instead of zig-zagging along the faces)
   const p = geo.attributes.position, n = p.count, col = new Float32Array(n * 3);
-  for (let i = 0; i < n; i += 3) {
-    let x = 0, y = 0, z = 0;
-    for (let k = 0; k < 3; k++) { x += p.getX(i + k); y += p.getY(i + k); z += p.getZ(i + k); }
-    x /= 3; y /= 3; z /= 3;
+  for (let i = 0; i < n; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
     const yy = y + Math.sin(x * 0.06 + seed) * 1.1 + Math.sin(z * 0.045 + seed * 2.3) * 0.8;
     const k = Math.floor(yy / band + seed * 3.7);
     const c = pal[((k % pal.length) + pal.length) % pal.length];
     const ao = 0.72 + 0.28 * clamp((y - ground) / 10, 0, 1);
-    for (let k2 = 0; k2 < 3; k2++) { col[(i + k2) * 3] = c.r * ao; col[(i + k2) * 3 + 1] = c.g * ao; col[(i + k2) * 3 + 2] = c.b * ao; }
+    col[i * 3] = c.r * ao; col[i * 3 + 1] = c.g * ao; col[i * 3 + 2] = c.b * ao;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   return geo;
@@ -241,6 +271,9 @@ const MESAS = {
   spire: [5, { rough: 0.22 }, 9, [[1, -6, 12], [0.8, 6, 8], [0.66, 14, 8], [0.78, 22, 6], [1.3, 28, 3]]],
   ridge: [15, { sx: 3, sz: 0.85 }, 31, [[1, -8, 11], [0.85, 3, 8], [0.7, 11, 6]]],
   stack: [9, { rough: 0.25 }, 41, [[1.25, 0, 17], [1.0, 17, 18], [0.85, 35, 12], [0.95, 47, 3]]], // sea stack (base at y=0, 50 tall)
+  // v3 canyon walls: long layered cliffs lining the road (long axis along the road), 57 / 37 tall before scaling
+  wall: [22, { sx: 0.62, sz: 2.4, rough: 0.2 }, 61, [[1, -8, 20], [0.92, 12, 16], [0.85, 28, 15], [0.8, 43, 11], [0.86, 54, 3.4]]],
+  wall2: [18, { sx: 0.7, sz: 2.0, rough: 0.24 }, 71, [[1, -8, 16], [0.9, 8, 12], [0.84, 20, 14], [0.9, 34, 3.2]]],
 };
 function mesaGeo(kind) {
   let g = geoCache.get(kind);
@@ -330,7 +363,7 @@ function apron() {
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geo.setIndex(idx);
     geo.computeVertexNormals();
-    const l = DESERT_LOOK.ground;
+    const l = groundSpec();
     const g = new THREE.Group();
     g.add(new THREE.Mesh(geo, surface(l.tex, { tint: l.tint, scale: l.scale })));
     return g;
@@ -341,7 +374,8 @@ function hairpinMesa() {
   const g = bake('hairpin', () => {
     const C = course();
     const sA = 78.5 * SPEED, sB = 85.8 * SPEED;
-    const layers = [[12.4, -6, 13], [15.5, 7, 9], [19, 16, 11], [22.5, 27, 9], [21.4, 36, 2.6]];
+    // v3: the hairpin is tight (centre radius ≈ 36): the base keeps 14 − bevel ≥ 12.6 from the centre line (kerbs end at 11.8)
+    const layers = [[14, -6, 13], [16.2, 7, 10], [18.8, 17, 12], [21.4, 29, 11], [23.4, 40, 10], [22.6, 50, 2.8]];
     const parts = [];
     const fr = {};
     for (const [c, y0, h] of layers) {
@@ -356,13 +390,28 @@ function hairpinMesa() {
     strata(geo, 0.6, STRATA, 3.3, -6);
     const root = new THREE.Group();
     root.add(new THREE.Mesh(geo, rockV()));
+    // sand floor between the two legs of the hairpin (the terrain leaves a hole there next to the landing)
+    {
+      const pts = [];
+      for (let s = 75 * SPEED; s <= 85.8 * SPEED; s += 3) {
+        C.frame(s, fr);
+        pts.push(new THREE.Vector2(fr.x - Math.cos(fr.yaw) * 12.4, -(fr.z - Math.sin(fr.yaw) * 12.4)));
+      }
+      const fl = slab(pts, -2.4, 2.0, 0);
+      const p = fl.attributes.position, uv = fl.attributes.uv;
+      for (let i = 0; i < p.count; i++) uv.setXY(i, p.getX(i) / 7, p.getZ(i) / 7);
+      const l = groundSpec();
+      const floor = new THREE.Mesh(fl, surface(l.tex, { tint: l.tint, scale: 1 }));
+      floor.receiveShadow = true;
+      root.add(floor);
+    }
     // Hollywood-style letters on the rim, facing the glide in
     C.frame(T_HAIR[0] * SPEED + 0.48 * (T_HAIR[1] - T_HAIR[0]) * SPEED, fr);
-    const cx = fr.x - Math.cos(fr.yaw) * 30, cz = fr.z - Math.sin(fr.yaw) * 30;
+    const cx = fr.x - Math.cos(fr.yaw) * 31, cz = fr.z - Math.sin(fr.yaw) * 31;
     const a = C.frame(78.0 * SPEED, {});
     const hd = Math.atan2(-Math.sin(a.yaw), Math.cos(a.yaw)); // face back up the approach
     const letters = new THREE.Group();
-    letters.position.set(cx, 38.5, cz);
+    letters.position.set(cx, 52.6, cz);
     letters.rotation.y = hd;
     const tex = canvasTex('hollywood', 2048, 256, (g2, w, h) => {
       g2.textAlign = 'center'; g2.textBaseline = 'middle';
@@ -385,12 +434,12 @@ function hairpinMesa() {
   // a couple of boulders and a quiver tree on the rim (unbaked models)
   const C = course();
   const fr = C.frame(79.4 * SPEED, {});
-  const tree = model('quiver_tree_02', { size: 9 });
-  tree.position.set(fr.x - Math.cos(fr.yaw) * 30, 38.6, fr.z - Math.sin(fr.yaw) * 30);
+  const tree = model('quiver_tree_02', { size: 12 });
+  tree.position.set(fr.x - Math.cos(fr.yaw) * 31, 52.6, fr.z - Math.sin(fr.yaw) * 31);
   g.add(tree);
   const f2 = C.frame(84.9 * SPEED, {});
-  const b = rmodel('namaqualand_boulder_02', 7, '#f0b08a');
-  b.position.set(f2.x - Math.cos(f2.yaw) * 14.5, f2.y - 0.6, f2.z - Math.sin(f2.yaw) * 14.5);
+  const b = rmodel('namaqualand_boulder_02', 8, '#f0b08a');
+  b.position.set(f2.x - Math.cos(f2.yaw) * 19, f2.y - 0.6, f2.z - Math.sin(f2.yaw) * 19);
   b.rotation.y = 1.2;
   g.add(b);
   return g;
@@ -464,13 +513,14 @@ let chevMat = null;
 function chevron() {
   const g = bake('chevron', () => {
     const r = new THREE.Group();
-    posts(r, 3.2, 2.6, MAT.metal('#8e949e'), 0.14, -0.2);
-    r.add(mesh(G.rbox(5.5, 4.15, 0.22, 0.12), toon('#25202c', { roughness: 0.6 }), 0, 4.55, -0.13));
+    // MK-style chevron board: ≈ 4.6 wide, top at ≈ 4.7 (2.5 kh), on two stubby posts
+    posts(r, 2.8, 1.6, MAT.metal('#8e949e'), 0.13, -0.2);
+    r.add(mesh(G.rbox(4.75, 3.55, 0.22, 0.12), toon('#25202c', { roughness: 0.6 }), 0, 2.95, -0.13));
     return r;
   });
   chevMat ||= litMat('chevron', chevronTex(), { emissive: 0.4, roughness: 0.35 });
-  const f = new THREE.Mesh(G.plane(5.2, 3.9), chevMat);
-  f.position.set(0, 4.55, 0);
+  const f = new THREE.Mesh(G.plane(4.5, 3.35), chevMat);
+  f.position.set(0, 2.95, 0);
   g.add(f);
   return g;
 }
@@ -487,10 +537,10 @@ function hairpinIcon() {
   });
 }
 function warnSign(big) {
-  const k = big ? 1.5 : 1;
+  const k = big ? 0.85 : 0.6; // v3: road signs ≈ 6 / 8.7 tall (MK: 4–5, the big one is a hero sign)
   return bake('warn' + k, () => {
     const g = new THREE.Group();
-    posts(g, 2.4 * k, 9.5 * k, MAT.metal('#8e949e'), 0.17 * k);
+    posts(g, 2.4 * k, 9.5 * k, MAT.metal('#8e949e'), 0.2 * k);
     const d = face('hairpin', hairpinIcon(), 7.2 * k, 7.2 * k, { emissive: 0.3, alphaTest: 0.5 });
     d.position.set(0, 6.6 * k, 0.02);
     g.add(d);
@@ -1029,107 +1079,455 @@ function gulls() {
   return g;
 }
 
+// ---------- v3 dressing: smooth toy boulders, dunes, canyon walls, telephone line, stone barriers ----------
+/** smooth chunky boulder (radius ≈ 1, flat-ish base), strata-coloured, non-indexed with smooth normals */
+function boulderGeo(seed) {
+  const key = 'boulder' + seed;
+  let g = geoCache.get(key);
+  if (g) return g;
+  const r = makeRng(seed + 101);
+  const a = [r() * 6, r() * 6, r() * 6, r() * 6, r() * 6, r() * 6];
+  let ico = new THREE.IcosahedronGeometry(1, 5);
+  ico.deleteAttribute('normal'); ico.deleteAttribute('uv');
+  ico = mergeVertices(ico);
+  const p = ico.attributes.position;
+  const sx = 0.85 + r() * 0.4, sz = 0.85 + r() * 0.4;
+  for (let i = 0; i < p.count; i++) {
+    let x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const k = 1 + 0.16 * Math.sin(2.1 * x + a[0]) * Math.sin(1.7 * z + a[1]) + 0.1 * Math.sin(3.3 * y + 2.2 * x + a[2])
+      + 0.06 * Math.sin(5.1 * z - 4.3 * y + a[3]) + 0.12 * Math.max(0, Math.sin(2.4 * x + 1.9 * z + a[4])); // a soft chunky facet or two
+    x *= k * sx; y *= k * 0.78; z *= k * sz;
+    if (y < -0.32) y = -0.32 + (y + 0.32) * 0.25; // sits flat on the ground
+    p.setXYZ(i, x, y + 0.3, z);
+  }
+  ico.computeVertexNormals();
+  g = ico.toNonIndexed();
+  g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+  const uv = g.attributes.uv, pp = g.attributes.position;
+  for (let i = 0; i < pp.count; i++) uv.setXY(i, pp.getX(i) * 0.5 + pp.getZ(i) * 0.3, pp.getY(i) * 0.5);
+  geoCache.set(key, g);
+  return g;
+}
+/** a cluster of boulders + pebbles in one draw call. big: mid-distance crag (≈ 12–20 tall) */
+function rockCluster(v, big) {
+  return bake('rocks' + v + (big ? 'L' : 'S'), () => {
+    const r = makeRng(v * 7 + (big ? 50 : 3));
+    const parts = [];
+    const put = (seed, s, x, z, ry, sy = 1) => {
+      const g = boulderGeo(seed).clone();
+      g.scale(s, s * sy, s);
+      g.rotateY(ry);
+      g.translate(x, -0.15 * s, z);
+      parts.push(g);
+    };
+    const S = big ? 6.5 : 1.7;
+    put(v % 4, S * r.range(1.1, 1.5), 0, 0, r() * 6, big ? 1.5 : 1.15);
+    // compact footprint (radius ≈ 2.3 S) so clusters can sit close to the kerb
+    put((v + 1) % 4, S * r.range(0.6, 0.85), S * r.range(1.0, 1.3), S * r.range(-0.5, 0.5), r() * 6);
+    put((v + 2) % 4, S * r.range(0.45, 0.65), -S * r.range(0.9, 1.2), S * r.range(-0.7, 0.5), r() * 6);
+    for (let i = 0; i < (big ? 5 : 4); i++) put((v + i) % 4, S * r.range(0.12, 0.26), r.range(-1.7, 1.7) * S, r.range(-1.5, 1.5) * S, r() * 6);
+    const geo = mergeGeometries(parts, false);
+    strata(geo, v * 0.9 + 0.3, STRATA, big ? 2.6 : 0.9, -1);
+    const root = new THREE.Group();
+    root.add(new THREE.Mesh(geo, rockV()));
+    return root;
+  });
+}
+/** smooth sand dune with a crest and a steeper slip face, sand textured like the ground (world-unit UVs) */
+function dune(v) {
+  return bake('dune' + v, () => {
+    const W = 80, L = 120, Hd = v ? 13 : 9;
+    const geo = new THREE.PlaneGeometry(W, L, 44, 40);
+    geo.rotateX(-Math.PI / 2);
+    const p = geo.attributes.position, uv = geo.attributes.uv;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), z = p.getZ(i);
+      const w = (2 * z) / L, u = (2 * x) / W;
+      const crest = 0.22 * Math.sin(w * 2.4 + v * 1.7) + 0.08 * Math.sin(w * 6.1 + v);
+      const d = u - crest;
+      let h = d < 0 ? Math.pow(Math.max(0, 1 + d / 1.15), 1.8) : Math.pow(Math.max(0, 1 - d / 0.55), 2.2);
+      h *= Math.pow(Math.max(0, 1 - w * w), 1.3) * (1 - 0.15 * Math.sin(w * 3.7 + v * 2));
+      p.setY(i, Hd * h - 1.6);
+      uv.setXY(i, x / 7, z / 7);
+    }
+    geo.computeVertexNormals();
+    const l = groundSpec();
+    const root = new THREE.Group();
+    root.add(new THREE.Mesh(geo, surface(l.tex, { tint: l.tint, scale: 1 })));
+    return root;
+  });
+}
+/** sandstone barrier blocks (MK desert kerb walls): 3 rounded blocks ≈ 1.7 tall, one draw */
+const BLOCK_PAL = ['#f6d3a4', '#efc08c', '#f9dcb4', '#e8b07c'].map((c) => new THREE.Color(c));
+function blocks() {
+  return bake('blocks', () => {
+    const parts = [];
+    for (let i = 0; i < 3; i++) {
+      const g = new rboxGeo(3.0, 1.7, 1.5, 0.38);
+      g.translate(0, 0.85, -i * 3.35 + 3.35);
+      parts.push(g);
+    }
+    const geo = mergeGeometries(parts, false);
+    strata(geo, 3.1, BLOCK_PAL, 0.55, -0.4);
+    const root = new THREE.Group();
+    root.add(new THREE.Mesh(geo, rockV()));
+    return root;
+  });
+}
+function rboxGeo(w, h, d, r) {
+  const g = G.rbox(w, h, d, r).clone();
+  for (const n of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(n)) g.deleteAttribute(n);
+  return g.index ? g.toNonIndexed() : g;
+}
+/** wooden telephone pole (≈ 10.8 tall) + three wires that are aimed at the next pole when placed */
+const POLE_EVERY = 3; // chunks between poles
+function telePole() {
+  const g = bake('pole', () => {
+    const r = new THREE.Group();
+    const wood = MAT.wood('#6e4c32'), dark = MAT.wood('#4f3523');
+    r.add(mesh(G.cyl(0.19, 0.26, 10.8, 12), wood, 0, 5.4, 0));
+    r.add(mesh(G.rbox(3.4, 0.26, 0.26, 0.06), dark, 0, 9.75, 0));
+    for (const s of [-1, 1]) { const b = mesh(G.box(0.1, 1.3, 0.1), dark, s * 0.55, 9.3, 0); b.rotation.z = s * 0.7; r.add(b); }
+    const ins = MAT.plastic('#86d6b8', { roughness: 0.2 });
+    for (const x of [-1.4, 1.4]) r.add(mesh(G.cyl(0.09, 0.13, 0.36, 10), ins, x, 10.05, 0));
+    r.add(mesh(G.cyl(0.09, 0.13, 0.36, 10), ins, 0, 10.98, 0));
+    r.add(mesh(G.box(0.5, 0.7, 0.4), MAT.matte('#8a8d92'), 0, 8.4, 0.3)); // transformer can
+    return r;
+  });
+  const wires = new THREE.Group();
+  wires.rotation.order = 'YXZ';
+  const wm = MAT.rubber('#2b2624');
+  for (const [x, y] of [[-1.4, -0.0], [1.4, 0], [0, 0.93]]) {
+    const w = mesh(G.box(0.05, 0.05, 1), wm, x, y, -0.5);
+    w.castShadow = false;
+    wires.add(w);
+  }
+  wires.position.y = 10.2;
+  g.add(wires);
+  g.userData.wires = wires;
+  return g;
+}
+const _wa = {}, _wb = {};
+function aimWires(wires, zf, lat, rotY, nextOK) {
+  wires.visible = nextOK;
+  if (!nextOK) return;
+  const C = course();
+  const a = C.frame(zf, _wa), b = C.frame(zf + POLE_EVERY * SPACING, _wb);
+  const dx = (b.x + Math.cos(b.yaw) * lat) - (a.x + Math.cos(a.yaw) * lat);
+  const dzw = (b.z + Math.sin(b.yaw) * lat) - (a.z + Math.sin(a.yaw) * lat);
+  const dy = b.y - a.y;
+  const th = -a.yaw + rotY, c = Math.cos(-th), s = Math.sin(-th);
+  const lx = dx * c + dzw * s, lz = -dx * s + dzw * c;
+  const hz = Math.hypot(lx, lz);
+  wires.rotation.set(Math.atan2(dy, hz), Math.atan2(-lx, -lz), 0);
+  wires.scale.set(1, 1, Math.hypot(hz, dy));
+}
+
+// ---------- THE PRETRAINED ONES: giant stone heads half-buried in the dunes (moai-ish, weights frozen since 3000 BC) ----------
+const HEAD_PAL = ['#cdb39a', '#bfa58c', '#d6bea4', '#b39a82'].map((c) => new THREE.Color(c));
+function stoneHead(v) {
+  return bake('head' + v, () => {
+    const parts = [];
+    const add = (geo, x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) => {
+      const q = geo.clone();
+      for (const n of Object.keys(q.attributes)) if (!['position', 'normal', 'uv'].includes(n)) q.deleteAttribute(n);
+      const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(sx, sy, sz));
+      const nq = q.index ? q.toNonIndexed() : q;
+      nq.applyMatrix4(m);
+      parts.push(nq);
+    };
+    // head block (tall, slightly tapered), heavy brow, long nose, pouty lips, long ears, flat cap
+    add(G.rbox(9, 20, 8, 2.6), 0, 10, 0, -0.08);
+    add(G.rbox(9.6, 2.4, 4, 1.0), 0, 15.2, 3.0, -0.1);
+    add(G.rbox(2.6, 8.5, 3.4, 1.1), 0, 10.6, 4.2, -0.22);
+    add(G.rbox(4.6, 1.3, 2.2, 0.6), 0, 5.4, 4.0);
+    add(G.rbox(7.4, 3.6, 6.2, 1.4), 0, 2.6, 1.4);
+    for (const s of [-1, 1]) add(G.rbox(1.4, 9, 2.2, 0.6), s * 4.9, 11, -0.6);
+    add(G.cyl(4.4, 4.6, 3.2, 28), 0, 21.2, -0.4); // the pukao (topknot hat)
+    const geo = mergeGeometries(parts, false);
+    strata(geo, 4.2 + v, HEAD_PAL, 1.7, 0);
+    const root = new THREE.Group();
+    root.add(new THREE.Mesh(geo, rockV()));
+    if (v === 1) {
+      // the newest one is wearing a visor (multimodal)
+      root.add(mesh(G.rbox(9.4, 1.5, 0.6, 0.3), glow('#4ff3ff', { intensity: 3.2 }), 0, 13.2, 4.4));
+    }
+    return root;
+  });
+}
+function headPlaque() {
+  return bake('headPlaque', () => {
+    const g = new THREE.Group();
+    const wood = MAT.wood('#6a4026');
+    for (const x of [-2.4, 2.4]) g.add(mesh(G.box(0.4, 4.4, 0.4), wood, x, 2.2, -0.1));
+    const p = textFace(['THE PRETRAINED ONES', 'weights frozen since 3000 BC', 'context window: 4 tokens'], 6.2, 2.6, { bg: '#5b3a22', fg: '#fff3dc', border: '#f2d29c', radius: 26 }, { emissive: 0.28 });
+    p.position.set(0, 3.2, 0.12);
+    g.add(p);
+    g.add(mesh(G.rbox(6.5, 2.9, 0.2, 0.08), wood, 0, 3.2, 0));
+    return g;
+  });
+}
+
+// ---------- clifftop dressing: umbrella pines, cypresses, a split-rail fence, the diner, sailboats ----------
+function umbrellaPine(v) {
+  return bake('pine' + v, () => {
+    const g = new THREE.Group();
+    const r = makeRng(v + 31);
+    const bark = MAT.wood('#6b4a36'), leaf = MAT.matte('#3f6b3a'), leaf2 = MAT.matte('#4f7d43');
+    const lean = (v ? -1 : 1) * 0.9;
+    const pts = [[0, 0, 0], [lean * 0.4, 4, 0.2], [lean * 1.4, 8, 0], [lean * 2.0, 11.2, -0.2]].map((q) => new THREE.Vector3(...q));
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 16, 0.42, 10, false), bark));
+    const top = pts[3];
+    for (let i = 0; i < 4; i++) {
+      const c = mesh(G.sphere(3.4, 20), i % 2 ? leaf : leaf2, top.x + r.range(-3.2, 3.2), top.y + r.range(0.2, 1.4), top.z + r.range(-2.4, 2.4));
+      c.scale.set(r.range(1.1, 1.5), 0.42, r.range(1.0, 1.3));
+      g.add(c);
+    }
+    return g;
+  });
+}
+function cypress() {
+  return bake('cypress', () => {
+    const g = new THREE.Group();
+    g.add(mesh(G.cyl(0.25, 0.32, 2, 8), MAT.wood('#5a3f2c'), 0, 1, 0));
+    const c = mesh(new THREE.SphereGeometry(1, 20, 16), MAT.matte('#2f5a33'), 0, 7.4, 0);
+    c.scale.set(1.7, 6.6, 1.7);
+    g.add(c);
+    const c2 = mesh(new THREE.SphereGeometry(1, 16, 12), MAT.matte('#3a6a3a'), 0.4, 6, 0.6);
+    c2.scale.set(1.4, 4.5, 1.3);
+    g.add(c2);
+    return g;
+  });
+}
+function fence() {
+  return bake('fence', () => {
+    const g = new THREE.Group();
+    const wood = MAT.wood('#9b7552'), dark = MAT.wood('#7d5a3c');
+    for (let i = 0; i < 5; i++) g.add(mesh(G.rbox(0.32, 1.9, 0.32, 0.08), dark, 0, 0.95, 5 - i * 2.5));
+    for (const y of [0.85, 1.55]) g.add(mesh(G.rbox(0.16, 0.24, 10.2, 0.06), wood, 0.12, y, 0));
+    return g;
+  });
+}
+function diner() {
+  const g = bake('diner', () => {
+    const r = new THREE.Group();
+    const wall = MAT.paint('#f3e6cf', { clearcoat: 0.2 }), teal = MAT.paint('#2fa39b'), red = MAT.paint('#d8262f');
+    const conc = surface('concrete', { tint: '#d6cbbb', scale: 4 });
+    r.add(mesh(G.box(30, 0.3, 18), conc, 0, 0.15, 0));
+    r.add(mesh(G.rbox(20, 6.6, 9, 0.4), wall, 0, 3.6, -3));
+    r.add(mesh(G.rbox(21, 1.1, 10, 0.3), teal, 0, 7.2, -3));
+    r.add(mesh(G.box(20.2, 0.5, 9.2), red, 0, 1.0, -3));
+    for (let i = 0; i < 5; i++) r.add(mesh(G.box(2.8, 2.6, 0.1), glow('#ffd9a0', { intensity: 1.5 }), -7.2 + i * 3.6, 3.9, 1.55));
+    r.add(mesh(G.box(2.2, 3.6, 0.12), toon('#3a2f2a'), 8.4, 2.2, 1.56));
+    // the tall roadside sign
+    r.add(mesh(G.rbox(0.8, 15, 0.8, 0.2), MAT.metal('#a7adb7'), 12, 7.5, 4));
+    r.add(mesh(G.rbox(9.6, 5.2, 1.0, 0.5), teal, 12, 14, 4));
+    return r;
+  });
+  const neon = textFace(['OUT-OF-DISTRIBUTION', 'DINER'], 9, 4.4, { bg: '#16202a', fg: '#ff7ab0', border: '#57fff1', radius: 40 }, { emissive: 2.2 });
+  neon.position.set(12, 14, 4.55);
+  g.add(neon);
+  const sub = textFace(['VACANCY: ∞', 'no training data served here'], 7, 2, { bg: '#fff1d6', fg: '#d8262f', border: '#d8262f' }, { emissive: 0.6 });
+  sub.position.set(12, 9.7, 4.45);
+  g.add(sub);
+  const fasc = textFace(['EAT · GAS · GRADIENTS'], 14, 1.0, { bg: '#2fa39b', fg: '#ffffff', border: null, borderW: 0, radius: 6, weight: 900 }, { emissive: 0.5 });
+  fasc.position.set(0, 7.2, 2.03);
+  g.add(fasc);
+  return g;
+}
+function sailboat() {
+  const g = new THREE.Group();
+  const boat = bake('boat', () => {
+    const r = new THREE.Group();
+    const hull = mesh(G.sphere(1, 20), MAT.paint('#f6f2ea'), 0, 0.4, 0);
+    hull.scale.set(1.6, 0.9, 5);
+    r.add(hull);
+    r.add(mesh(G.box(2.6, 0.4, 7), MAT.wood('#a8743f'), 0, 1.1, 0));
+    r.add(mesh(G.cyl(0.12, 0.14, 11, 8), MAT.wood('#6b4a30'), 0, 6.5, 0.4));
+    return r;
+  });
+  g.add(boat);
+  const sail = textFace(['RLHF'], 4.6, 8.6, { bg: '#fff6e6', fg: '#d8262f', border: '#d8262f', radius: 10, weight: 900 }, { emissive: 0.25, side: THREE.DoubleSide });
+  sail.position.set(0, 6.6, -0.4);
+  sail.rotation.y = Math.PI / 2;
+  boat.add(sail);
+  g.userData.boat = boat;
+  return g;
+}
+
 // ---------- layouts ----------
 const LANDMARKS = ['mesaA', 'mesaA', 'mesaB', 'butte', 'butte', 'spire', 'ridge'];
 const LM_R = { mesaA: 36, mesaB: 42, butte: 13, spire: 8, ridge: 48 };
-function landmark(out, zf, rng, side, xMin, xMax) {
+/** distant landmark (v3: mesas 45–90 tall, buttes 55–110, spires 35–70) */
+function landmark(out, zf, rng, side, xMin, xMax, sMin = 1.15, sMax = 2.1) {
   const kind = rng.pick(LANDMARKS);
-  const s = rng.range(0.8, 1.6);
+  const s = rng.range(sMin, sMax);
   const x = side * rng.range(xMin, xMax);
   if (!clearOfRoad(zf, x, LM_R[kind] * s)) return;
-  out.push({ kind, x, rotY: rng.range(0, 6.28), scale: s });
+  out.push({ kind, x, abs: true, rotY: rng.range(0, 6.28), scale: s });
 }
+/** true if a footprint shaped like a capsule along the prop's local z axis (half length L, radius rad) keeps clear of the road */
+function clearCapsule(z, lat, L, rad, rotY = 0) {
+  const C = course();
+  const f = C.frame(z, _fa);
+  const px = f.x + Math.cos(f.yaw) * lat, pz = f.z + Math.sin(f.yaw) * lat;
+  const th = -f.yaw + rotY, ax = Math.sin(th), az = Math.cos(th);
+  const r2 = (rad + H + 5) ** 2;
+  for (let s = z - 560; s <= z + 560; s += 5) {
+    const g = C.frame(s, _fb);
+    const vx = g.x - px, vz = g.z - pz;
+    const u = clamp(vx * ax + vz * az, -L, L);
+    if ((vx - ax * u) ** 2 + (vz - az * u) ** 2 < r2) return false;
+  }
+  return true;
+}
+/** a long layered canyon wall parallel to the road (MK red canyon: 45–80 tall, right beside the track) */
+function canyonWall(out, zf, rng, side, xMin, xMax) {
+  const kind = rng.chance(0.6) ? 'wall' : 'wall2';
+  const s = rng.range(0.95, 1.45);
+  const x = side * rng.range(xMin, xMax);
+  const rotY = rng.range(-0.3, 0.3);
+  const [R, sh] = MESAS[kind];
+  if (!clearCapsule(zf, x, R * (sh.sz - sh.sx) * s, R * sh.sx * s * 1.2, rotY)) return false;
+  out.push({ kind, x, abs: true, rotY, scale: s });
+  return true;
+}
+/** dunes are 80 × 120 (× scale): an elongated footprint along the local road axis */
+const duneClear = (zf, x, sc, rotY) => clearCapsule(zf, x, 22 * sc, 38 * sc, rotY);
+const poleChunk = (zf) => ((Math.round(zf / SPACING) % POLE_EVERY) + POLE_EVERY) % POLE_EVERY === 0;
+/** telephone line along the right of the desert road (skips the hairpin) */
+const poleOK = (zf) => { const t = zf / SPEED; return (t > T_LAND + 0.2 && t < T_HAIR[0] - 0.5) || (t > T_HAIR[1] + 0.6 && t < 100); };
+const POLE_X = 17.5;
+
 function desertLayout(out, zf, rng) {
   const t = zf / SPEED;
   let dz;
+  const A = (o) => out.push({ abs: true, ...o });
   // set pieces, timed to the lyrics
   if ((dz = once(zf, T_LAND + 0.06)) !== null) out.push({ kind: 'apron', x: 0, y: 6, dz });
   if ((dz = once(zf, 82.0)) !== null) out.push({ kind: 'hairpinA', x: 0, y: 6, dz });
   if ((dz = once(zf, 86.4)) !== null) out.push({ kind: 'hairpinB', x: 0, y: 6, dz });
   if ((dz = once(zf, 77.95)) !== null) out.push({ kind: 'gantry', x: 0, y: 0, dz });
-  if ((dz = once(zf, 78.55)) !== null) out.push({ kind: 'museum', x: -29, dz, rotY: faceRot(zf + dz, -29, 60) });
-  if ((dz = once(zf, 77.75)) !== null) out.push({ kind: 'regLimit', x: 12, dz, rotY: -0.15 });
-  if ((dz = once(zf, 77.85)) !== null) out.push({ kind: 'boulder3', x: -17, dz, rotY: 2 });
+  if ((dz = once(zf, 78.55)) !== null) A({ kind: 'museum', x: -37, dz, rotY: faceRot(zf + dz, -37, 60) });
+  if ((dz = once(zf, 77.75)) !== null) A({ kind: 'regLimit', x: 13.4, dz, rotY: -0.15 });
+  if ((dz = once(zf, 77.85)) !== null) A({ kind: 'boulder3', x: -19, dz, rotY: 2 });
   if ((dz = once(zf, 79.1)) !== null) out.push({ kind: 'arch', x: 0, y: 6, dz });
-  if ((dz = once(zf, 79.45)) !== null) out.push({ kind: 'warnBig', x: 13, dz, rotY: -0.2 });
-  if ((dz = once(zf, 79.95)) !== null) out.push({ kind: 'warn', x: 12.2, dz, rotY: -0.25 });
-  if ((dz = once(zf, 83.85)) !== null) out.push({ kind: 'diaGrad', x: 12, dz, rotY: -0.2 });
-  if ((dz = once(zf, 84.45)) !== null) out.push({ kind: 'diaHallu', x: 12.2, dz, rotY: -0.2 });
-  if ((dz = once(zf, 85.25)) !== null) out.push({ kind: 'cdr', x: 13.5, dz, rotY: -0.2 });
-  if ((dz = once(zf, 86.15)) !== null) out.push({ kind: 'gas', x: 27, dz, rotY: faceRot(zf + dz, 27, 70, 4) });
-  if ((dz = once(zf, 86.2)) !== null) out.push({ kind: 'boulder2', x: 19, dz, rotY: 0.6 });
-  if ((dz = once(zf, 86.9)) !== null) out.push({ kind: 'diaMinima', x: -12.2, dz, rotY: 0.2 });
-  if ((dz = once(zf, 87.7)) !== null) out.push({ kind: 'park', x: 14, dz, rotY: -0.3 });
-  // chevrons lining the outside of the hairpin
+  if ((dz = once(zf, 79.45)) !== null) A({ kind: 'warnBig', x: 14.4, dz, rotY: -0.2 });
+  if ((dz = once(zf, 79.95)) !== null) A({ kind: 'warn', x: 13.4, dz, rotY: -0.25 });
+  if ((dz = once(zf, 83.85)) !== null) A({ kind: 'diaGrad', x: 13.4, dz, rotY: -0.2 });
+  if ((dz = once(zf, 84.05)) !== null) A({ kind: 'headPlaque', x: 14.6, dz, rotY: -0.35 });
+  if ((dz = once(zf, 84.45)) !== null) A({ kind: 'diaHallu', x: 13.4, dz, rotY: -0.2 });
+  // THE PRETRAINED ONES: three giant stone heads out in the dunes, watching the S-bend
+  for (const [tt, x, v, sc] of [[84.2, 70, 0, 1.25], [84.75, 92, 1, 1.5], [85.3, 116, 2, 1.3]]) {
+    if ((dz = once(zf, tt)) === null) continue;
+    if (clearOfRoad(zf + dz, x, 8 * sc)) A({ kind: 'head' + v, x, dz, rotY: faceRot(zf + dz, x, 90) + (v - 1) * 0.25, scale: sc });
+    if (duneClear(zf + dz, x - 6, 0.8, 0.3 * (v - 1))) A({ kind: 'dune' + (v % 2), x: x - 6, dz, rotY: 0.3 * (v - 1), scale: 0.8 });
+  }
+  if ((dz = once(zf, 85.25)) !== null) A({ kind: 'cdr', x: 15.2, dz, rotY: -0.2 });
+  if ((dz = once(zf, 86.15)) !== null) A({ kind: 'gas', x: 31, dz, rotY: faceRot(zf + dz, 31, 70, 4) });
+  if ((dz = once(zf, 86.2)) !== null) A({ kind: 'boulder2', x: 21.5, dz, rotY: 0.6 });
+  if ((dz = once(zf, 86.9)) !== null) A({ kind: 'diaMinima', x: -13.4, dz, rotY: 0.2 });
+  if ((dz = once(zf, 87.7)) !== null) A({ kind: 'park', x: 15.5, dz, rotY: -0.3 });
+  // chevrons lining the outside of the hairpin, MK style: one continuous wall of boards
   const inHair = t >= T_HAIR[0] - 0.1 && t <= T_HAIR[1] + 0.15;
   if (inHair) {
-    for (const d of [0, 5]) out.push({ kind: 'chevron', x: 13.6, dz: d, rotY: faceRot(zf + d, 13.6, 24, -2) });
-    if (rng.chance(0.5)) out.push({ kind: 'rock', x: rng.range(20, 30), rotY: rng.range(0, 6), scale: rng.range(1, 2) });
+    for (const d of [0, 5]) A({ kind: 'chevron', x: 13.2, dz: d, rotY: faceRot(zf + d, 13.2, 24, -2) });
+    if (rng.chance(0.6)) A({ kind: 'rocks' + rng.int(0, 3), x: rng.range(19, 30), rotY: rng.range(0, 6), scale: rng.range(0.8, 1.4) });
+    if (rng.chance(0.4)) A({ kind: rng.chance(0.5) ? 'saguaro2' : 'saguaro', x: rng.range(20, 32), rotY: rng.range(-1, 1), scale: rng.range(1.1, 1.4) });
   }
   if (t < T_LAND) return;
-  // roadside scatter
   const hairInner = t > 78.4 && t < 85.9; // the hairpin mesa occupies the left verge here
+  // telephone line on the right
+  if (poleOK(zf) && poleChunk(zf)) A({ kind: 'pole', x: POLE_X, rotY: 0, data: { lat: POLE_X, next: poleOK(zf + POLE_EVERY * SPACING) } });
+  // sandstone barrier blocks on the outside of the S-bend (right turn → left side, then left turn → right side)
+  if (t > 83.4 && t < 85.6 && !hairInner) A({ kind: 'blocks', x: -13.0, rotY: 0 });
+  if (t > 85.9 && t < 88.3 && rng.chance(0.7)) A({ kind: 'blocks', x: 13.0, rotY: 0 });
+  if (t < T_HAIR[0] - 0.2 && rng.chance(0.18)) A({ kind: 'blocks', x: rng.chance(0.5) ? 13 : -13, rotY: 0 });
+  // dense roadside scatter: a near item and a mid item per side
   for (const side of [-1, 1]) {
     if (side < 0 && hairInner) continue;
     if (side > 0 && inHair) continue;
     const r = rng();
-    const x = side * rng.range(11.8, 21);
-    if (r < 0.16) out.push({ kind: 'saguaro', x, rotY: rng.range(-1, 1), scale: rng.range(0.85, 1.25) });
-    else if (r < 0.24) out.push({ kind: 'saguaro2', x, rotY: rng.range(-1, 1), scale: rng.range(0.85, 1.2) });
-    else if (r < 0.31) out.push({ kind: 'pear', x, rotY: rng.range(-1, 1) });
-    else if (r < 0.42) out.push({ kind: 'rock', x: side * rng.range(12.5, 26), rotY: rng.range(0, 6), scale: rng.range(0.7, 1.8) });
-    else if (r < 0.54) out.push({ kind: 'tuftD', x, rotY: rng.range(0, 6), scale: rng.range(0.8, 1.4) });
-    else if (r < 0.6) out.push({ kind: 'quiver', x: side * rng.range(14, 26), rotY: rng.range(0, 6), scale: rng.range(0.8, 1.2) });
-    else if (r < 0.65) out.push({ kind: 'tumbleweed', x: side * rng.range(13, 18) });
+    const x = side * rng.range(14.2, 19);
+    if (r < 0.2) A({ kind: 'saguaro', x, rotY: rng.range(-1, 1), scale: rng.range(0.95, 1.3) });
+    else if (r < 0.3) A({ kind: 'saguaro2', x, rotY: rng.range(-1, 1), scale: rng.range(0.95, 1.25) });
+    else if (r < 0.4) A({ kind: 'pear', x, rotY: rng.range(-1, 1), scale: rng.range(0.6, 0.8) });
+    else if (r < 0.58) A({ kind: 'rocks' + rng.int(0, 3), x: side * rng.range(16.5, 21), rotY: rng.range(0, 6), scale: rng.range(0.7, 1.3) });
+    else if (r < 0.8) A({ kind: 'tuftD', x, rotY: rng.range(0, 6), scale: rng.range(0.8, 1.4) });
+    else if (r < 0.86) A({ kind: 'tumbleweed', x: side * rng.range(14, 18), scale: 0.85 });
+    const r2 = rng();
+    const x2 = side * rng.range(22, 40);
+    if (r2 < 0.22) A({ kind: rng.chance(0.5) ? 'saguaro2' : 'saguaro', x: x2, rotY: rng.range(-1, 1), scale: rng.range(1.2, 1.5) });
+    else if (r2 < 0.34) A({ kind: 'quiver', x: x2, rotY: rng.range(0, 6), scale: rng.range(0.9, 1.2) });
+    else if (r2 < 0.5) A({ kind: 'rocks' + rng.int(0, 3), x: x2, rotY: rng.range(0, 6), scale: rng.range(1.3, 2.2) });
+    else if (r2 < 0.62) A({ kind: 'tuftD', x: x2, rotY: rng.range(0, 6), scale: rng.range(1, 1.6) });
   }
   if (!hairInner && !inHair && rng.chance(0.05)) out.push({ kind: 'tumblecross', x: 0 });
-  // mid-distance boulders + the big skyline
-  if (rng.chance(0.22)) {
+  // mid distance: crags and dunes
+  if (rng.chance(0.25)) {
     const side = rng.chance(0.5) ? -1 : 1;
-    if (!(side < 0 && hairInner)) {
-      const x = side * rng.range(30, 60);
-      if (clearOfRoad(zf, x, 6)) out.push({ kind: 'rock', x, rotY: rng.range(0, 6), scale: rng.range(2.5, 4.5) });
-    }
+    const x = side * rng.range(34, 70), sc = rng.range(0.8, 1.4);
+    const headsView = side > 0 && t > 82.6 && t < 86.4;
+    if (!(side < 0 && hairInner) && !headsView && clearOfRoad(zf, x, 17 * sc)) A({ kind: 'crag' + rng.int(0, 3), x, rotY: rng.range(0, 6), scale: sc });
   }
-  if (rng.chance(0.5)) landmark(out, zf, rng, rng.chance(0.5) ? -1 : 1, 75, 270);
+  if (rng.chance(0.14)) {
+    const side = rng.chance(0.5) ? -1 : 1;
+    const x = side * rng.range(55, 110), rotY = rng.range(-0.6, 0.6), sc = rng.range(0.8, 1.3);
+    if (duneClear(zf, x, sc, rotY)) A({ kind: 'dune' + rng.int(0, 1), x, rotY, scale: sc });
+  }
+  // the canyon: long layered walls close in on both sides after the landing, then open up into dunes + mesas
+  // (the S-bend stays open on the right so THE PRETRAINED ONES can be seen across the dunes)
+  if (t < T_HAIR[0] + 0.3 && rng.chance(0.55)) canyonWall(out, zf, rng, rng.chance(0.5) ? -1 : 1, 46, 78);
+  if (t > 86.6 && t < 88.6 && rng.chance(0.5)) canyonWall(out, zf, rng, -1, 46, 74);
+  if (rng.chance(0.55)) landmark(out, zf, rng, rng.chance(0.5) ? -1 : 1, 95, 300);
 }
 function cliffLayout(out, zf, rng) {
   let dz;
   const sY = seaY();
   const fy = course().frame(zf, _fa).y;
-  const seaProp = (kind, x, d = 0, extra = {}) => out.push({ kind, x, y: sY - SEA_BASE - fy, dz: d, ...extra });
-  if ((dz = once(zf, 88.75)) !== null) out.push({ kind: 'overlook', x: 13.5, dz, rotY: -0.3 });
-  if ((dz = once(zf, 89.0)) !== null) out.push({ kind: 'plea0', x: 11.9, dz, rotY: -0.35 });
+  const A = (o) => out.push({ abs: true, ...o });
+  const seaProp = (kind, x, d = 0, extra = {}) => out.push({ kind, x, abs: true, y: sY - SEA_BASE - fy, dz: d, ...extra });
+  if ((dz = once(zf, 88.75)) !== null) A({ kind: 'overlook', x: 15, dz, rotY: -0.3 });
+  if ((dz = once(zf, 89.0)) !== null) A({ kind: 'plea0', x: 13.4, dz, rotY: -0.35 });
   if ((dz = once(zf, 89.85)) !== null) {
     // GATO faces the sunset over the sea; the plinth faces you
     const z = zf + dz;
-    const rotY = faceRot(z, 13.5, 30) - 0.1;
+    const rotY = faceRot(z, 15, 30) - 0.1;
     const az = course().frame(z, _fb).yaw - 1.25; // out to sea, a little ahead
     const objRot = -course().frame(z, _fa).yaw + rotY;
-    out.push({ kind: 'gato', x: 13.5, dz, rotY, scale: 1.25, data: { catRot: Math.atan2(Math.sin(az), -Math.cos(az)) - objRot } });
+    A({ kind: 'gato', x: 15, dz, rotY, scale: 1.25, data: { catRot: Math.atan2(Math.sin(az), -Math.cos(az)) - objRot } });
   }
   if ((dz = once(zf, 90.15)) !== null) seaProp('gulls', -24, dz, { y: 14 });
   if ((dz = once(zf, 90.4)) !== null) seaProp('lighthouse', -105, dz);
-  if ((dz = once(zf, 90.75)) !== null) out.push({ kind: 'plea1', x: 12.4, dz, rotY: -0.3 });
-  if ((dz = once(zf, 91.6)) !== null) out.push({ kind: 'bench', x: 12.4, dz, rotY: 1.2 });
-  if ((dz = once(zf, 92.2)) !== null) out.push({ kind: 'plea2', x: 11.9, dz, rotY: -0.4 });
-  if ((dz = once(zf, 92.9)) !== null) out.push({ kind: 'viewer', x: 11.8, dz, rotY: 1.6 });
+  if ((dz = once(zf, 90.75)) !== null) A({ kind: 'plea1', x: 13.9, dz, rotY: -0.3 });
+  if ((dz = once(zf, 91.6)) !== null) A({ kind: 'bench', x: 13.9, dz, rotY: 1.2 });
+  if ((dz = once(zf, 92.2)) !== null) A({ kind: 'plea2', x: 13.4, dz, rotY: -0.4 });
+  if ((dz = once(zf, 92.6)) !== null) A({ kind: 'diner', x: 34, dz, rotY: faceRot(zf + dz, 34, 70, 2) });
+  if ((dz = once(zf, 92.9)) !== null) A({ kind: 'viewer', x: 13.3, dz, rotY: 1.6 });
   if ((dz = once(zf, 93.5)) !== null) seaProp('gulls', -30, dz, { y: 16 });
-  if ((dz = once(zf, 93.8)) !== null) out.push({ kind: 'plea3', x: 12.2, dz, rotY: -0.3 });
-  if ((dz = once(zf, 95.1)) !== null) out.push({ kind: 'plea4', x: 12.0, dz, rotY: -0.35 });
+  if ((dz = once(zf, 93.8)) !== null) A({ kind: 'plea3', x: 13.7, dz, rotY: -0.3 });
+  if ((dz = once(zf, 95.1)) !== null) A({ kind: 'plea4', x: 13.5, dz, rotY: -0.35 });
   if ((dz = once(zf, 95.62)) !== null) out.push({ kind: 'headland', x: 0, y: 6, dz });
-  // right side: coastal scrub
+  // telephone line continues on the right
+  if (poleOK(zf) && poleChunk(zf)) A({ kind: 'pole', x: POLE_X + 1, rotY: 0, data: { lat: POLE_X + 1, next: poleOK(zf + POLE_EVERY * SPACING) } });
+  // right side: split-rail fence, coastal scrub, umbrella pines and cypresses
+  if (rng.chance(0.6)) A({ kind: 'fence', x: 13.3, rotY: 0 });
   const r = rng();
-  const x = rng.range(11.8, 22);
-  if (r < 0.3) out.push({ kind: 'tuftG', x, rotY: rng.range(0, 6), scale: rng.range(0.8, 1.5) });
-  else if (r < 0.42) out.push({ kind: 'shrub', x: rng.range(13, 22), rotY: rng.range(0, 6), scale: rng.range(0.8, 1.3) });
-  else if (r < 0.52) out.push({ kind: 'rock', x: rng.range(13, 24), rotY: rng.range(0, 6), scale: rng.range(0.6, 1.4) });
-  else if (r < 0.58) out.push({ kind: 'pear', x, rotY: rng.range(-1, 1) });
-  else if (r < 0.62) out.push({ kind: 'quiver', x: rng.range(15, 24), rotY: rng.range(0, 6) });
-  if (rng.chance(0.35)) out.push({ kind: 'tuftD', x: rng.range(12, 30), rotY: rng.range(0, 6), scale: rng.range(0.8, 1.3) });
-  if (rng.chance(0.4)) landmark(out, zf, rng, 1, 80, 240);
-  // left: sea stacks rising out of the ocean
-  if (rng.chance(0.3)) seaProp('stack', -rng.range(55, 260), 0, { rotY: rng.range(0, 6), scale: rng.range(0.7, 1.4) });
+  const x = rng.range(14.5, 22);
+  if (r < 0.3) A({ kind: 'tuftG', x, rotY: rng.range(0, 6), scale: rng.range(0.9, 1.6) });
+  else if (r < 0.44) A({ kind: 'shrub', x: rng.range(15, 22), rotY: rng.range(0, 6), scale: rng.range(0.9, 1.3) });
+  else if (r < 0.56) A({ kind: 'rocks' + rng.int(0, 3), x: rng.range(16.5, 24), rotY: rng.range(0, 6), scale: rng.range(0.7, 1.3) });
+  else if (r < 0.64) A({ kind: 'pear', x, rotY: rng.range(-1, 1), scale: 0.7 });
+  const r2 = rng(), x2 = rng.range(24, 46);
+  if (r2 < 0.22) A({ kind: 'pine' + rng.int(0, 1), x: x2, rotY: rng.range(0, 6), scale: rng.range(1.0, 1.3) });
+  else if (r2 < 0.38) A({ kind: 'cypress', x: x2, rotY: 0, scale: rng.range(0.9, 1.25) });
+  else if (r2 < 0.5) A({ kind: 'quiver', x: x2, rotY: rng.range(0, 6) });
+  if (rng.chance(0.35)) A({ kind: 'tuftD', x: rng.range(14, 32), rotY: rng.range(0, 6), scale: rng.range(0.8, 1.3) });
+  if (rng.chance(0.2)) { const xc = rng.range(36, 70), sc = rng.range(0.8, 1.3); if (clearOfRoad(zf, xc, 17 * sc)) A({ kind: 'crag' + rng.int(0, 3), x: xc, rotY: rng.range(0, 6), scale: sc }); }
+  if (rng.chance(0.45)) landmark(out, zf, rng, 1, 90, 260);
+  // left: sea stacks and the odd sailboat out on the ocean
+  if (rng.chance(0.3)) seaProp('stack', -rng.range(60, 260), 0, { rotY: rng.range(0, 6), scale: rng.range(0.8, 1.6) });
+  if (rng.chance(0.08)) seaProp('boat', -rng.range(70, 180), 0, { rotY: rng.range(-1, 1) });
 }
 
 export default {
@@ -1158,19 +1556,20 @@ export default {
       case 'apron': return apron();
       case 'headland': return headland();
       case 'hairpinA': case 'hairpinB': return hairpinMesa();
-      case 'mesaA': case 'mesaB': case 'butte': case 'spire': case 'ridge': return rockForm(kind);
-      case 'arch': return arch();
-      case 'gantry': return gantry();
-      case 'museum': { const m = museum(); m.scale.setScalar(1.35); const w = new THREE.Group(); w.add(m); return w; }
-      case 'gas': return gasStation();
+      case 'mesaA': case 'mesaB': case 'butte': case 'spire': case 'ridge': case 'wall': case 'wall2': return rockForm(kind);
+      case 'arch': return sized(arch(), 1.2); // ≈ 42 tall, feet at ±32
+      case 'gantry': return sized(gantry(), 1.15); // ≈ 15.5 tall, posts at ±15.5
+      case 'museum': return sized(museum(), 1.5);
+      case 'gas': return sized(gasStation(), 1.15);
       case 'chevron': return chevron();
       case 'warn': return warnSign(false);
       case 'warnBig': return warnSign(true);
       case 'cdr': return greenSign('cdr', ['NO CDR', 'FOR 400 MILES'], ['next CDR: never'], 10.5, 4.8);
-      case 'regLimit': return regSign('limit', ['SPEED', 'LIMIT', '10²⁶', 'FLOPs']);
-      case 'diaGrad': return diamond('grad', ['STEEP', 'GRADIENT', 'DESCENT'], ['12% · lower LR']);
-      case 'diaHallu': return diamond('hallu', ['MIRAGES', 'AHEAD'], ['(confidently)']);
-      case 'diaMinima': return diamond('minima', ['LOCAL', 'MINIMA'], ['next 5 miles']);
+      // v3 road signs: ≈ 5.5 tall (MK 4–5 + a little for the joke text)
+      case 'regLimit': return sized(regSign('limit', ['SPEED', 'LIMIT', '10²⁶', 'FLOPs']), 0.64);
+      case 'diaGrad': return sized(diamond('grad', ['STEEP', 'GRADIENT', 'DESCENT'], ['12% · lower LR']), 0.6);
+      case 'diaHallu': return sized(diamond('hallu', ['MIRAGES', 'AHEAD'], ['(confidently)']), 0.6);
+      case 'diaMinima': return sized(diamond('minima', ['LOCAL', 'MINIMA'], ['next 5 miles']), 0.6);
       case 'park': return parkSign('mlp', ['MULTI-LAYER PLATEAU', 'NATIONAL PARK'], ['est. 1958 · still not conscious']);
       case 'overlook': return parkSign('overlook', ['SCENIC OVERLOOK', 'EDGE OF THE DISTRIBUTION'], ['no guardrails past this point*  *there is one']);
       case 'saguaro': return saguaro(0);
@@ -1179,11 +1578,22 @@ export default {
       case 'tuftD': return tuft(true);
       case 'tuftG': return tuft(false);
       case 'tumbleweed': case 'tumblecross': return tumbleweed();
-      case 'rock': return rmodel('rock_09', 2.6, '#f2b48c');
-      case 'boulder2': return rmodel('namaqualand_boulder_02', 6, '#f0b08a');
-      case 'boulder3': return rmodel('namaqualand_boulder_03', 7, '#f0b08a');
-      case 'quiver': return model('quiver_tree_02', { size: 8 });
-      case 'shrub': return rmodel('shrub_04', 2.6, '#c8c890');
+      case 'rocks0': case 'rocks1': case 'rocks2': case 'rocks3': return rockCluster(+kind[5], false);
+      case 'crag0': case 'crag1': case 'crag2': case 'crag3': return rockCluster(+kind[4], true);
+      case 'dune0': case 'dune1': return dune(+kind[4]);
+      case 'blocks': return blocks();
+      case 'pole': return telePole();
+      case 'head0': case 'head1': case 'head2': return stoneHead(+kind[4]);
+      case 'headPlaque': return headPlaque();
+      case 'pine0': case 'pine1': return umbrellaPine(+kind[4]);
+      case 'cypress': return cypress();
+      case 'fence': return fence();
+      case 'diner': return diner();
+      case 'boat': return sailboat();
+      case 'boulder2': return rmodel('namaqualand_boulder_02', 11, '#f0b08a');
+      case 'boulder3': return rmodel('namaqualand_boulder_03', 9, '#f0b08a');
+      case 'quiver': return rmodel('quiver_tree_02', 12);
+      case 'shrub': return rmodel('shrub_04', 4.6, '#c8c890');
       case 'gato': return gato();
       case 'plea0': case 'plea1': case 'plea2': case 'plea3': case 'plea4': return plea(+kind[4]);
       case 'bench': return bench();
@@ -1237,6 +1647,15 @@ export default {
       case 'gas':
         for (const f of u.fans) f.rotation.x = t * 14;
         break;
+      case 'pole':
+        if (e && u.zf !== e.zf) { u.zf = e.zf; aimWires(u.wires, e.zf, e.data?.lat ?? POLE_X, 0, !!e.data?.next); }
+        break;
+      case 'boat': {
+        const ph = t * 1.3 + (e ? e.seed * 20 : 0);
+        u.boat.position.y = Math.sin(ph) * 0.35;
+        u.boat.rotation.z = Math.sin(ph * 0.8) * 0.06;
+        break;
+      }
       case 'gato':
         if (e.data) u.cat.rotation.y = e.data.catRot;
         break;
