@@ -1,12 +1,15 @@
 // TAKEOFF (final outro): a launch complex at dusk, then space. The road ramps exponentially (~320 m) and the
-// kart launches into the sky as the song ends. Red/white lattice gantries with rockets that lift off as you pass,
+// kart launches into the sky as the song ends. v3: red steel deck rails with chevrons line the whole ramp and tilt
+// with it into space, acceleration gates span the road, floodlight masts, fuel tanks, a radar dish, container stacks,
+// an investor viewing deck; in space the ramp rides on lattice pylons past satellites and a ringed planet. Red/white lattice gantries with rockets that lift off as you pass,
 // billowing smoke at the ramp base, alarm beacons, a colossal live P(DOOM) scoreboard, bouncing FOOM letters,
 // RECURSIVE SELF-IMPROVEMENT: ENABLED, ALIGNMENT: WE'LL FIGURE IT OUT LATER, a Vehicle Assembly Building next to
 // a tiny alignment shed, glowing launch hoops, and a Dyson sphere under construction (phase 1 of ∞).
 import { THREE, glow, G, mesh, textPanel, makeRng, FONT, MAT } from '../toolkit.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { surface } from '../textures.js';
-import { SPEED } from '../course.js';
+import { SPEED, Course } from '../course.js';
+import { cardboardStand, KIT_U } from './garage.js';
 
 const RED = '#ff2a4a', YEL = '#ffd23f', INK = '#2b1840', ORANGE = '#ff7a1f';
 const TAU = Math.PI * 2;
@@ -127,19 +130,19 @@ function noShadow(obj) { obj.traverse((o) => { if (o.isMesh) o.castShadow = fals
 // =====================================================================================================
 // red/white lattice (shared by gantries and towers)
 // =====================================================================================================
-function lattice(kt, H, R, step, red, white) {
-  for (const sx of [-R, R]) for (const sz of [-R, R]) kt.add(G.box(0.42, H, 0.42), red, sx, H / 2, sz);
+function lattice(kt, H, R, step, red, white, ox = 0, oy = 0, oz = 0) {
+  for (const sx of [-R, R]) for (const sz of [-R, R]) kt.add(G.box(0.42, H, 0.42), red, ox + sx, oy + H / 2, oz + sz);
   let k = 0;
   for (let y = step * 0.5; y < H; y += step, k++) {
-    const c = k % 2 ? red : white;
-    kt.add(G.box(2 * R + 0.4, 0.28, 0.28), c, 0, y, R); kt.add(G.box(2 * R + 0.4, 0.28, 0.28), c, 0, y, -R);
-    kt.add(G.box(0.28, 0.28, 2 * R + 0.4), c, R, y, 0); kt.add(G.box(0.28, 0.28, 2 * R + 0.4), c, -R, y, 0);
+    const c = k % 2 ? red : white, Y = oy + y;
+    kt.add(G.box(2 * R + 0.4, 0.28, 0.28), c, ox, Y, oz + R); kt.add(G.box(2 * R + 0.4, 0.28, 0.28), c, ox, Y, oz - R);
+    kt.add(G.box(0.28, 0.28, 2 * R + 0.4), c, ox + R, Y, oz); kt.add(G.box(0.28, 0.28, 2 * R + 0.4), c, ox - R, Y, oz);
     if (y + step < H) {
       const s = k % 2 ? 1 : -1;
-      kt.bar([-R, y, R + 0.05], [R, y + step, R + 0.05], 0.18, white);
-      kt.bar([R, y, -R - 0.05], [-R, y + step, -R - 0.05], 0.18, white);
-      kt.bar([R + 0.05, y, s * R], [R + 0.05, y + step, -s * R], 0.18, white);
-      kt.bar([-R - 0.05, y, -s * R], [-R - 0.05, y + step, s * R], 0.18, white);
+      kt.bar([ox - R, Y, oz + R + 0.05], [ox + R, Y + step, oz + R + 0.05], 0.18, white);
+      kt.bar([ox + R, Y, oz - R - 0.05], [ox - R, Y + step, oz - R - 0.05], 0.18, white);
+      kt.bar([ox + R + 0.05, Y, oz + s * R], [ox + R + 0.05, Y + step, oz - s * R], 0.18, white);
+      kt.bar([ox - R - 0.05, Y, oz - s * R], [ox - R - 0.05, Y + step, oz + s * R], 0.18, white);
     }
   }
 }
@@ -348,7 +351,7 @@ function drawScore(ud, v) {
 }
 function scoreboard() {
   const g = new THREE.Group();
-  const HW = 14, SW = 27, SH = SW * SB_H / SB_W, Y = 15.5;
+  const HW = 14.8, SW = 27, SH = SW * SB_H / SB_W, Y = 15.5;
   g.add(kit('score', (kt) => {
     const frame = MAT.paint('#1a1420'), yel = MAT.paint(YEL), blk = MAT.paint('#18181e'), steel = MAT.metal('#9a9aa8');
     for (const s of [-1, 1]) {
@@ -596,7 +599,7 @@ function chartPanel() {
 // =====================================================================================================
 function vabTex() {
   return once('vab', () => canvasTex(512, 512, (x) => {
-    x.fillStyle = '#c8c0bc'; x.fillRect(0, 0, 512, 512);
+    x.fillStyle = '#e4e0dc'; x.fillRect(0, 0, 512, 512);
     const r = makeRng(3);
     for (let i = 0; i < 64; i++) for (let j = 0; j < 64; j++) { x.fillStyle = `rgba(0,0,0,${(r() * 0.06).toFixed(3)})`; x.fillRect(i * 8, j * 8, 8, 8); }
     x.fillStyle = 'rgba(40,30,40,0.25)';
@@ -614,12 +617,19 @@ function vab() {
     kt.add(G.box(16, H * 0.82, 0.6), MAT.plastic('#3a3a48'), -8, H * 0.41, D / 2 + 0.2);
     kt.add(G.box(13, H * 0.78, 0.4), glow('#ffd8a0', { intensity: 1.6 }), -8, H * 0.39, D / 2 + 0.3);
     kt.add(G.box(W + 1, 2, D + 1), MAT.plastic('#6a6474'), 0, H + 1, 0);
+    // blue/white corner bands + vertical light strips (reads at 200 m)
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) kt.add(G.box(4, H, 4), MAT.paint('#2a4a9a'), sx * (W / 2 - 1.9), H / 2, sz * (D / 2 - 1.9), 0, 0, 0, 1.02, 1, 1.02);
+    for (let i = 0; i < 6; i++) kt.add(G.box(0.5, H * 0.2, 0.8), glow('#ffe0b0', { intensity: 1.4 }), W / 2 + 0.3, H * 0.9 - 1, -D / 2 + 6 + i * 7.6);
     for (let x = -W / 2 + 4; x < W / 2; x += 8) kt.add(G.sphere(0.6, 8), glow(RED, { intensity: 4 }), x, H + 2.4, D / 2);
     // the alignment department: a portable shed
     kt.add(G.rbox(5, 3, 3.4, 0.2), MAT.plastic('#e8e4d8'), W / 2 + 26, 1.5, D / 2 - 2);
     kt.add(G.box(5.4, 0.25, 3.8), MAT.plastic('#8a8478'), W / 2 + 26, 3.1, D / 2 - 2);
     kt.add(G.box(0.9, 0.7, 0.1), glow('#fff2c0', { intensity: 2 }), W / 2 + 27, 1.9, D / 2 - 0.25);
   }));
+  const side = textPanel(['VEHICLE ASSEMBLY BUILDING', '(the vehicles assemble themselves now)'], { width: 44, height: 12, bg: '#1a2a6a', fg: '#ffffff', border: '#ffffff', borderW: 12, radius: 18 });
+  side.position.set(W / 2 + 0.4, H * 0.7, 0);
+  side.rotation.y = Math.PI / 2;
+  g.add(side);
   const flag = textPanel(['FRONTIER LAB', 'CAPABILITIES DEPT.'], { width: 34, height: 14, bg: '#1a1a3a', fg: '#ffffff', border: YEL, borderW: 14, radius: 20 });
   flag.position.set(14, H * 0.72, D / 2 + 0.4);
   g.add(flag);
@@ -673,16 +683,16 @@ function animateLaunch(obj, t, seed) {
 function hoop(v) {
   const g = new THREE.Group();
   g.add(kit('hoop', (kt) => {
-    kt.add(G.torus(14, 0.55, 64), glow(v ? '#ff4fd8' : '#3ff2ff', { intensity: 2.6 }), 0, 7, 0);
-    kt.add(G.torus(14.8, 0.25, 64), MAT.metal('#c8ccd8'), 0, 7, 0);
+    kt.add(G.torus(16, 0.6, 96), glow(v ? '#ff4fd8' : '#3ff2ff', { intensity: 2.6 }), 0, 7, 0);
+    kt.add(G.torus(16.9, 0.28, 96), MAT.metal('#c8ccd8'), 0, 7, 0);
     for (let k = 0; k < 8; k++) {
       const a = (k / 8) * TAU;
-      kt.add(G.cone(0.6, 1.4, 4), glow(YEL, { intensity: 3 }), Math.cos(a) * 14, 7 + Math.sin(a) * 14, 0.4, 0, 0, a - Math.PI / 2);
+      kt.add(G.cone(0.7, 1.6, 4), glow(YEL, { intensity: 3 }), Math.cos(a) * 16, 7 + Math.sin(a) * 16, 0.4, 0, 0, a - Math.PI / 2);
     }
   }));
   if (v === 0) {
     const t = textPanel('ESCAPE VELOCITY ▲', { width: 12, height: 1.8, bg: null, fg: '#ffffff', stroke: '#2a0a3a', strokeW: 12 });
-    t.position.set(0, 23.2, 0);
+    t.position.set(0, 25.6, 0);
     g.add(t);
   }
   return g;
@@ -798,6 +808,245 @@ function pauseButton() {
 }
 
 // =====================================================================================================
+// v3: trackside launch-complex kit (sizes for the v3 world: kart+driver ≈ 1.86 tall)
+// =====================================================================================================
+let _course = null;
+const _cf = {};
+/** pitch (rad) of the road at arc length s: deck rails / arches / hoops tilt with the exponential ramp */
+function rampPitch(s) {
+  if (!_course) _course = new Course();
+  _course.frame(s, _cf);
+  return Math.asin(Math.max(-1, Math.min(1, _cf.ty)));
+}
+const RAIL = 20.4; // deck rail segment (two layout cells + overlap)
+/** steel deck barrier: red wall, white cap, yellow/black chevrons facing the road, amber marker lights. left side (road at +x) */
+function deckRail(mirror) {
+  const g = kit('rail' + (mirror ? 'R' : 'L'), (kt) => {
+    const m = mirror ? -1 : 1;
+    const red = MAT.paint('#d8283a'), white = MAT.paint('#f2efe6'), yel = MAT.paint(YEL), blk = MAT.paint('#18181e'), steel = MAT.paint('#5a5a68');
+    kt.add(G.box(1.6, 0.35, RAIL), steel, -0.2 * m, 0.17, 0);
+    kt.add(G.rbox(0.6, 1.5, RAIL, 0.18), red, 0, 1.05, 0);
+    kt.add(G.rbox(0.7, 0.28, RAIL, 0.1), white, 0, 1.86, 0);
+    for (let i = 0; i < 6; i++) {
+      const z = -RAIL / 2 + 1.7 + i * ((RAIL - 3.4) / 5);
+      kt.add(G.box(0.06, 0.8, 2.2), yel, 0.31 * m, 1.0, z);
+      for (const d of [-0.55, 0.15]) kt.add(G.box(0.07, 0.95, 0.24), blk, 0.33 * m, 1.0, z + d, 0.55, 0, 0);
+      kt.add(G.sphere(0.13, 10), glow('#ffb020', { intensity: 3.2 }), 0.33 * m, 1.86, z + 1.1);
+    }
+    // outer catwalk + posts
+    for (let i = 0; i < 4; i++) kt.add(G.box(0.16, 1.4, 0.16), steel, -1.1 * m, 0.9, -RAIL / 2 + 1 + i * ((RAIL - 2) / 3));
+    kt.add(G.box(0.1, 0.1, RAIL), MAT.paint('#c8ccd8'), -1.1 * m, 1.6, 0);
+  });
+  return g;
+}
+
+/** floodlight mast ≈ 15 tall, four lamps */
+function floodlight() {
+  const g = new THREE.Group();
+  g.add(kit('flood', (kt) => {
+    const grey = MAT.paint('#3a3a48'), steel = MAT.paint('#a8acb8');
+    kt.add(G.cyl(0.9, 1.1, 0.8, 18), grey, 0, 0.4, 0);
+    kt.add(G.cyl(0.24, 0.36, 14, 14), steel, 0, 7.6, 0);
+    kt.add(G.rbox(4.6, 2.4, 0.4, 0.12), grey, 0, 14.6, 0.1);
+    for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) {
+      const x = -1.1 + c * 2.2, y = 14.0 + r * 1.2;
+      kt.add(G.cyl(0.52, 0.56, 0.4, 16), steel, x, y, 0.4, Math.PI / 2);
+      kt.add(G.cyl(0.44, 0.44, 0.05, 16), glow('#fff4dc', { intensity: 5 }), x, y, 0.62, Math.PI / 2);
+    }
+    kt.add(G.sphere(0.25, 10), glow(RED, { intensity: 3 }), 0, 16.1, 0.1);
+  }));
+  return g;
+}
+
+/** acceleration gate spanning the road (posts at ±15), sequenced chevron lights */
+function launchArch() {
+  const g = new THREE.Group();
+  const W = 15, Y = 17;
+  g.add(kit('arch', (kt) => {
+    const red = MAT.paint('#d8283a'), white = MAT.paint('#f2efe6'), dark = MAT.paint('#22202a'), steel = MAT.metal('#a8acb8');
+    for (const s of [-1, 1]) {
+      kt.add(G.cyl(1.9, 2.2, 0.8, 24), steel, s * W, 0.4, 0);
+      for (let k = 0; k < 8; k++) kt.add(G.rbox(2.6, 2.0, 2.6, 0.3), k % 2 ? white : red, s * W, 1.8 + k * 2.0, 0);
+      kt.bar([s * W, Y - 4, 0], [s * (W - 4), Y + 1.2, 0], 0.9, dark);
+    }
+    kt.add(G.rbox(2 * W + 3, 3.2, 2.4, 0.5), dark, 0, Y + 1.6, 0);
+    kt.add(G.box(2 * W + 3.2, 0.3, 2.5), white, 0, Y + 0.05, 0);
+    kt.add(G.box(2 * W + 3.2, 0.3, 2.5), white, 0, Y + 3.15, 0);
+  }));
+  const seq = [];
+  for (let i = 0; i < 5; i++) {
+    const c = kit('archChev' + i, (kt) => {
+      const x = (i - 2) * 4.2;
+      kt.add(G.cone(1.0, 1.3, 3), glow(i % 2 ? '#3ff2ff' : YEL, { intensity: 3.6 }), x, Y + 1.6, 1.25, 0, 0, 0, 1, 1, 0.25);
+    });
+    g.add(c);
+    seq.push(c);
+  }
+  const strip = kit('archStrip', (kt) => {
+    for (const s of [-1, 1]) kt.add(G.box(0.3, Y - 1.5, 0.3), glow('#3ff2ff', { intensity: 3 }), s * (W - 1.35), (Y - 1.5) / 2 + 0.8, 1.35);
+  });
+  g.add(strip);
+  const t = textPanel('LAUNCH RAIL · NO BRAKES BEYOND THIS POINT', { width: 22, height: 1.3, w: 2048, h: 121, pad: 10, bg: null, fg: '#ffffff', border: null, borderW: 0, stroke: INK, strokeW: 10 });
+  t.position.set(0, Y - 0.9, 1.3);
+  g.add(t);
+  g.userData.seq = seq;
+  g.userData.strip = strip;
+  return g;
+}
+
+/** red/white lattice pylons that carry the launch ramp over the void (hang down from the road) */
+function rampPylon() {
+  const g = new THREE.Group();
+  g.add(kit('pylon', (kt) => {
+    const red = MAT.paint('#d8283a'), white = MAT.paint('#f2efe6'), dark = MAT.paint('#2a2830');
+    for (const s of [-1, 1]) lattice(kt, 64, 1.5, 3.2, red, white, s * 9.5, -66, 0);
+    kt.add(G.rbox(23, 1.6, 3.2, 0.3), dark, 0, -1.4, 0);
+    for (let k = 0; k < 4; k++) kt.add(G.box(19, 0.4, 0.4), k % 2 ? red : white, 0, -12 - k * 14, 0);
+    for (const s of [-1, 1]) kt.add(G.sphere(0.4, 10), glow(RED, { intensity: 4 }), s * 9.5, -2.6, 1.7);
+  }));
+  return g;
+}
+
+/** fuel tank farm: two spheres on legs + a horizontal tank */
+function fuelTanks() {
+  const g = new THREE.Group();
+  g.add(kit('tanks', (kt) => {
+    const white = MAT.paint('#f2efe6'), red = MAT.paint('#d8283a'), steel = MAT.metal('#a8acb8'), grey = MAT.paint('#5a5a68');
+    for (const [x, z, r] of [[-12, 0, 7], [6, -6, 6]]) {
+      kt.add(G.sphere(r, 40), white, x, r + 5, z);
+      kt.add(G.cyl(r + 0.05, r + 0.05, 1.2, 40), red, x, r + 5, z);
+      for (let k = 0; k < 6; k++) { const a = (k / 6) * TAU; kt.add(G.cyl(0.35, 0.35, r + 5, 8), steel, x + Math.cos(a) * r * 0.75, (r + 5) / 2, z + Math.sin(a) * r * 0.75); }
+      kt.add(G.cyl(0.2, 0.2, 3, 8), steel, x, 2 * r + 6.4, z);
+    }
+    kt.add(G.cyl(4, 4, 26, 32), white, 2, 6, 12, 0, 0, Math.PI / 2);
+    for (const e of [-1, 1]) kt.add(G.sphere(4, 32), white, 2 + e * 13, 6, 12, 0, 0, 0, 0.45, 1, 1);
+    for (const x of [-8, 2, 12]) kt.add(G.rbox(1.2, 3, 7, 0.3), grey, x, 1.5, 12);
+    for (let k = 0; k < 5; k++) kt.add(G.cyl(0.5, 0.5, 30, 10), steel, -2 + k * 0.1, 1.2 + k * 1.1, 4 + k * 0.6, 0, 0, Math.PI / 2);
+  }));
+  const a = textPanel(['COMPUTE FUEL', 'highly flammable · extremely fundable'], { width: 13, height: 3.2, bg: '#ffffff', fg: '#d8283a', border: '#d8283a', borderW: 10, radius: 14 });
+  a.position.set(2, 6.4, 16.1);
+  g.add(a);
+  const b = textPanel(['TOKENS', '(HIGH OCTANE)'], { width: 8, height: 3, bg: null, fg: INK, border: null, borderW: 0, stroke: '#ffffff', strokeW: 8 });
+  b.position.set(-12, 15, 7.1);
+  g.add(b);
+  return g;
+}
+
+/** radar dish listening for AGI (it's listening back) */
+function radarDish() {
+  const g = new THREE.Group();
+  g.add(kit('radarBase', (kt) => {
+    const grey = MAT.paint('#e8e6e0'), red = MAT.paint('#d8283a');
+    kt.add(G.rbox(7, 1.2, 7, 0.3), MAT.matte('#5a5462'), 0, 0.6, 0);
+    kt.add(G.cyl(1.6, 2.4, 10, 20), grey, 0, 6, 0);
+    kt.add(G.cyl(2.5, 2.5, 1.0, 20), red, 0, 11.2, 0);
+  }));
+  const head = new THREE.Group();
+  head.position.set(0, 12, 0);
+  head.add(kit('radarDish', (kt) => {
+    const steel = MAT.metal('#a8acb8');
+    const dish = once('dishGeo', () => new THREE.SphereGeometry(7, 40, 14, 0, TAU, 0, 0.95));
+    kt.add(dish, once('dishMat', () => new THREE.MeshPhysicalMaterial({ color: '#f4f2ee', roughness: 0.35, clearcoat: 0.6, side: THREE.DoubleSide })), 0, 7.6, 0, Math.PI, 0, 0);
+    kt.add(G.cyl(0.6, 0.9, 2.4, 14), steel, 0, 1.2, 0);
+    for (let k = 0; k < 3; k++) { const a = (k / 3) * TAU; kt.bar([Math.cos(a) * 4.8, 3.4, Math.sin(a) * 4.8], [0, 7.4, 0], 0.2, steel); }
+    kt.add(G.sphere(0.5, 12), glow('#3ff2ff', { intensity: 3 }), 0, 7.6, 0);
+  }));
+  head.rotation.x = -0.6;
+  const tilt = new THREE.Group();
+  tilt.position.copy(head.position);
+  head.position.set(0, 0, 0);
+  tilt.add(head);
+  g.add(tilt);
+  const sign = textPanel(['LISTENING FOR AGI', "(it's listening back)"], { width: 7.6, height: 2.2, bg: INK, fg: '#3ff2ff', border: '#3ff2ff', borderW: 8, radius: 12 });
+  sign.position.set(0, 4.4, 2.1);
+  g.add(sign);
+  g.userData.dish = tilt;
+  return g;
+}
+
+/** satellite: an orbital datacenter (latency: yes) */
+function satellite() {
+  const g = new THREE.Group();
+  const body = new THREE.Group();
+  body.add(kit('sat', (kt) => {
+    const white = MAT.paint('#f2efe6'), gold = MAT.metal('#e0b050', { roughness: 0.3 }), panel = MAT.paint('#1a2a6a'), steel = MAT.metal('#a8acb8');
+    kt.add(G.rbox(4, 3, 3, 0.4), gold, 0, 0, 0);
+    kt.add(G.rbox(3.2, 3.4, 2.4, 0.3), white, 0, 0, 0);
+    for (const s of [-1, 1]) {
+      kt.add(G.cyl(0.12, 0.12, 4, 6), steel, s * 4, 0, 0, 0, 0, Math.PI / 2);
+      for (let k = 0; k < 3; k++) kt.add(G.box(3, 0.1, 4), panel, s * (6.5 + k * 3.1), 0, 0);
+    }
+    kt.add(G.cyl(0.1, 1.6, 1.0, 20), white, 0, 2.2, 0);
+    for (let k = 0; k < 6; k++) kt.add(G.box(0.4, 0.08, 0.05), glow(k % 2 ? '#5dffb0' : '#ffb84a', { intensity: 3 }), -1 + k * 0.4, 0.5, 1.22);
+  }));
+  g.add(body);
+  const t = textPanel(['ORBITAL DATACENTER', '(latency: yes)'], { width: 7, height: 1.9, bg: '#ffffff', fg: INK, border: YEL, borderW: 8, radius: 10 });
+  t.position.set(0, -2.8, 1.6);
+  body.add(t);
+  g.userData.body = body;
+  return g;
+}
+
+/** the next construction project, far away: a ringed gas giant wearing scaffolding */
+function planetTex() {
+  return once('planetTex', () => canvasTex(512, 256, (x) => {
+    const cols = ['#ff9a6a', '#ffcf8a', '#e86a6a', '#ffb07a', '#c85a7a', '#ffd8a0', '#e8806a'];
+    const r = makeRng(9);
+    let y = 0;
+    while (y < 256) { const h = 8 + r() * 26; x.fillStyle = cols[(r() * cols.length) | 0]; x.fillRect(0, y, 512, h + 1); y += h; }
+    x.globalAlpha = 0.25; x.fillStyle = '#ffffff';
+    for (let i = 0; i < 40; i++) x.fillRect(r() * 512, r() * 256, 40 + r() * 120, 2);
+    x.globalAlpha = 1; x.fillStyle = '#ffc89a'; x.fillRect(0, 0, 512, 14); x.fillRect(0, 242, 512, 14); // calm poles (no pinched stripes)
+  }));
+}
+function planet() {
+  const g = new THREE.Group();
+  const m = once('planetMat', () => new THREE.MeshStandardMaterial({ map: planetTex(), emissiveMap: planetTex(), emissive: new THREE.Color('#ffffff'), emissiveIntensity: 0.55, roughness: 0.9 }));
+  const p = new THREE.Mesh(once('planetGeo', () => new THREE.SphereGeometry(70, 48, 32)), m);
+  p.rotation.z = 0.35;
+  g.add(p);
+  const rm = once('ringMat', () => new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffd8b0').multiplyScalar(1.3), transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
+  const ring = new THREE.Mesh(once('ringGeo', () => new THREE.RingGeometry(92, 132, 96, 1)), rm);
+  ring.rotation.set(-Math.PI / 2 + 0.25, 0, 0.35);
+  g.add(ring);
+  const lbl = textPanel(['PLANET-SCALE COMPUTE', 'phase 2 (permits pending)'], { width: 60, height: 15, bg: '#0a0a1a', fg: YEL, border: YEL, borderW: 14, radius: 24 });
+  lbl.position.set(0, -92, 30);
+  g.add(lbl);
+  g.userData.planet = p;
+  return g;
+}
+
+/** shipping containers: model weights and GPUs, stacked */
+function cargoStack(v) {
+  const g = new THREE.Group();
+  g.add(kit('cargo' + v, (kt) => {
+    const cols = ['#d8283a', '#2a6ad8', '#2fb6a6', '#ff7a1f', '#f2efe6'];
+    const stack = v ? [[0, 0, 0, 0], [12.6, 0, 0.4, 1], [6.2, 1, 0.2, 2], [0, 0, -5.4, 3], [12.6, 0, -5.2, 4]] : [[0, 0, 0, 2], [0, 1, 0.3, 0], [0, 2, -0.2, 3], [13, 0, -1, 4], [13, 1, -0.6, 1]];
+    for (const [x, lvl, z, c] of stack) {
+      const y = 2.6 + lvl * 5.25;
+      const m = MAT.paint(cols[c]);
+      kt.add(G.rbox(12.2, 5.2, 5.0, 0.15), m, x, y, z);
+      for (let i = 0; i < 14; i++) kt.add(G.box(0.18, 4.6, 5.1), m, x - 5.6 + i * 0.86, y, z);
+      kt.add(G.box(12.3, 0.3, 5.1), MAT.paint('#3a3a44'), x, y - 2.45, z);
+    }
+  }));
+  const a = textPanel(v ? ['GPUs', 'THIS SIDE UP ↑'] : ['MODEL WEIGHTS', '(DO NOT LEAK)'], { width: 8, height: 3, bg: '#ffffff', fg: INK, border: INK, borderW: 8, radius: 10 });
+  a.position.set(0, v ? 2.8 : 13.3, 2.62);
+  g.add(a);
+  return g;
+}
+
+/** investor viewing deck: a cardboard crowd stand (from the garage) + sign */
+function viewingDeck() {
+  const g = new THREE.Group();
+  g.add(cardboardStand(1));
+  const s = textPanel(['INVESTOR VIEWING DECK', 'safe distance: 0 m (we checked)'], { width: 13, height: 2.6, bg: YEL, fg: INK, border: INK, borderW: 10, radius: 14 });
+  s.position.set(0, 9.4, 2.4);
+  g.add(s);
+  return g;
+}
+
+// =====================================================================================================
 export default {
   id: 'takeoff',
   title: 'TAKEOFF',
@@ -820,34 +1069,53 @@ export default {
     const out = [];
     const rel = zf - sec.start * SPEED;
     const at = (a) => rel >= a && rel < a + 10;
+    const A = (p) => out.push({ abs: true, ...p });
+    const cell = Math.round(rel / 10);
     const ground = rel < SPACE_REL - 8;
+    // steel deck rails both sides, all the way up the ramp and on into space (one 20 m segment every other cell)
+    if (cell % 2 === 0) { A({ kind: 'railL', x: -12 }); A({ kind: 'railR', x: 12 }); }
     if (ground) {
-      // landmarks
-      if (at(300)) out.push({ kind: 'vab', x: -150, rotY: 0.35 });
-      if (at(320)) out.push({ kind: 'launchFar', x: 170 });
-      if (at(120)) out.push({ kind: 'launchFar', x: -210 });
-      if (at(30)) out.push({ kind: 'gantryR', x: 27, rotY: -0.5 });
-      if (at(150)) out.push({ kind: 'gantryB', x: -44, rotY: 0.5 }); // its pad + smoke face the road: at -30 the smoke engulfed the chase camera
-      if (at(260)) out.push({ kind: 'gantryR', x: 29, rotY: -0.5 });
-      if (at(70) || at(290)) out.push({ kind: 'scoreboard', x: 0, y: 0 });
-      if (at(100)) out.push({ kind: 'foom', x: -21, rotY: 0.55 });
-      if (at(230)) out.push({ kind: 'foom', x: 21, rotY: -0.55 });
-      if (at(180)) out.push({ kind: 'rsi', x: 16.5, rotY: -0.45 });
-      if (at(210)) out.push({ kind: 'align', x: -16, rotY: 0.45 });
-      if (at(130)) out.push({ kind: 'chart', x: 16, rotY: -0.45 });
-      if (at(200)) out.push({ kind: 'pause', x: -13.5, rotY: 0.6 });
+      // far landmarks
+      if (at(300)) A({ kind: 'vab', x: -200, rotY: 0.35 });
+      if (at(320)) A({ kind: 'launchFar', x: 190 });
+      if (at(120)) A({ kind: 'launchFar', x: -230 });
+      if (at(90)) A({ kind: 'tanks', x: 56, rotY: -0.4 });
+      if (at(240)) A({ kind: 'tanks', x: -60, rotY: 0.5 });
+      // launch pads + gantries (rockets lift off as you pass)
+      if (at(30)) A({ kind: 'gantryR', x: 31, rotY: -0.5 });
+      if (at(150)) A({ kind: 'gantryB', x: -46, rotY: 0.5 }); // its pad + smoke face the road: at -30 the smoke engulfed the chase camera
+      if (at(260)) A({ kind: 'gantryR', x: 33, rotY: -0.5 });
+      if (at(160)) A({ kind: 'radar', x: 34, rotY: -0.5 });
+      // spanning the road: the live scoreboard and the acceleration gates up the ramp
+      if (at(70) || at(290)) A({ kind: 'scoreboard', x: 0, y: 0 });
+      if (at(220) || at(250) || at(320)) A({ kind: 'arch', x: 0 });
+      // gags at the roadside
+      if (at(10) || at(31)) A({ kind: 'deck', x: -23.5, rotY: Math.PI / 2, scale: 1.35 });
+      if (at(100)) A({ kind: 'foom', x: -28, rotY: 0.55, scale: 1.45 });
+      if (at(230)) A({ kind: 'foom', x: 28, rotY: -0.55, scale: 1.45 });
+      if (at(180)) A({ kind: 'rsi', x: 19, rotY: -0.45 });
+      if (at(200)) A({ kind: 'align', x: -19, rotY: 0.45 });
+      if (at(130)) A({ kind: 'chart', x: 19.5, rotY: -0.45, scale: 1.1 });
+      if (at(120)) A({ kind: 'pause', x: -16.5, rotY: 0.6, scale: 1.3 });
+      // floodlight masts + spinning alarm beacons behind the rails
+      if (cell % 4 === 1) A({ kind: 'flood', x: (cell % 8 === 1 ? -1 : 1) * 14.8, rotY: cell % 8 === 1 ? 0.9 : -0.9 });
+      else if (cell % 4 === 3) A({ kind: 'beacon', x: (cell % 8 === 3 ? 1 : -1) * 14.6, scale: 1.4 });
       // ramp base: smoke everywhere
-      if (rel < 150 && rng.chance(0.5)) out.push({ kind: 'smoke' + rng.int(0, 2), x: (rng.chance(0.5) ? 1 : -1) * rng.range(21, 48), rotY: rng.range(0, 6) });
-      else if (rng.chance(0.16)) out.push({ kind: 'smoke' + rng.int(0, 2), x: (rng.chance(0.5) ? 1 : -1) * rng.range(32, 70), rotY: rng.range(0, 6), scale: 1.6 });
-      if (rng.chance(0.3)) { const s = rng.chance(0.5) ? 1 : -1; out.push({ kind: 'tower', x: s * rng.range(18, 24), rotY: s > 0 ? 0 : Math.PI }); }
-      if (Math.round(rel / 10) % 2 === 0) { const s = Math.round(rel / 20) % 2 ? 1 : -1; out.push({ kind: 'beacon', x: s * 10.9 }); }
+      if (rel < 150 && rng.chance(0.4)) A({ kind: 'smoke' + rng.int(0, 2), x: (rng.chance(0.5) ? 1 : -1) * rng.range(28, 52), rotY: rng.range(0, 6) });
+      else if (rng.chance(0.16)) A({ kind: 'smoke' + rng.int(0, 2), x: (rng.chance(0.5) ? 1 : -1) * rng.range(40, 80), rotY: rng.range(0, 6), scale: 1.6 });
+      if (rng.chance(0.3)) { const s = rng.chance(0.5) ? 1 : -1; A({ kind: 'tower', x: s * rng.range(21, 27), rotY: s > 0 ? 0 : Math.PI }); }
+      else if (cell % 5 === 2 && rng.chance(0.7)) { const s = cell % 10 === 2 ? 1 : -1; A({ kind: 'cargo' + rng.int(0, 1), x: s * rng.range(30, 40), rotY: -s * rng.range(0.3, 0.9) }); }
     } else {
-      // space: hoops along the ramp, the Dyson sphere ahead, a floating scoreboard, an escape pod
-      if (Math.round(rel / 10) % 4 === 0) out.push({ kind: 'hoop' + (Math.round(rel / 40) % 2), x: 0 });
-      if (at(470)) out.push({ kind: 'scoreboard', x: 0, y: 0 });
-      if (at(700)) out.push({ kind: 'dyson', x: 10, y: 70, scale: 1.4 });
-      if (at(400)) out.push({ kind: 'pod', x: -22, y: 6, rotY: 0.4 });
-      if (at(520)) out.push({ kind: 'launchFar', x: 60, y: -120 });
+      // space: the ramp rides on lattice pylons, hoops along it, the Dyson sphere ahead
+      if (cell % 4 === 0) A({ kind: 'hoop' + (Math.round(rel / 40) % 2), x: 0 });
+      if (cell % 3 === 1) A({ kind: 'pylon', x: 0 });
+      if (at(470)) A({ kind: 'scoreboard', x: 0, y: 0 });
+      if (at(700)) A({ kind: 'dyson', x: 10, y: 70, scale: 1.4 });
+      if (at(400)) A({ kind: 'pod', x: -22, y: 6, rotY: 0.4 });
+      if (at(520)) A({ kind: 'launchFar', x: 60, y: -120 });
+      if (at(760)) A({ kind: 'planet', x: -250, y: 105, rotY: 0.6 });
+      if (at(380)) A({ kind: 'sat', x: 30, y: 14, rotY: -0.5 });
+      if (at(490)) A({ kind: 'sat', x: -34, y: 18, rotY: 0.6 });
     }
     return out;
   },
@@ -869,6 +1137,18 @@ export default {
       case 'dyson': return dyson();
       case 'pod': return escapePod();
       case 'pause': return pauseButton();
+      case 'railL': return deckRail(false);
+      case 'railR': return deckRail(true);
+      case 'flood': return floodlight();
+      case 'arch': return launchArch();
+      case 'pylon': return rampPylon();
+      case 'tanks': return fuelTanks();
+      case 'radar': return radarDish();
+      case 'sat': return satellite();
+      case 'planet': return planet();
+      case 'deck': return viewingDeck();
+      case 'cargo0': return cargoStack(0);
+      case 'cargo1': return cargoStack(1);
     }
   },
   animate(obj, kind, t, beatPhase, entry) {
@@ -876,7 +1156,14 @@ export default {
     const ud = obj.userData;
     if (!ud.init) {
       ud.init = true;
-      if (kind.startsWith('smoke') || kind.startsWith('hoop') || kind === 'dyson' || kind === 'launchFar' || kind === 'vab') noShadow(obj);
+      if (kind.startsWith('smoke') || kind.startsWith('hoop') || kind === 'dyson' || kind === 'launchFar' || kind === 'vab' || kind === 'planet' || kind === 'pylon') noShadow(obj);
+    }
+    // things that sit on the ramp tilt with it (pooled props get re-spawned: re-apply every frame, it's cheap)
+    if (kind === 'railL' || kind === 'railR' || kind === 'arch' || kind.startsWith('hoop')) {
+      if (ud.zf !== entry?.zf) { ud.zf = entry?.zf; ud.pitch = rampPitch(entry?.zf ?? 0); }
+      obj.rotation.order = 'YXZ';
+      obj.rotation.x = ud.pitch;
+      if (kind[0] === 'r') return;
     }
     if (kind.startsWith('smoke')) {
       const b = 1 + Math.sin(t * 0.6 + seed * 9) * 0.06;
@@ -903,6 +1190,19 @@ export default {
         ud.drones.rotation.y = -t * 0.12;
         ud.star.scale.setScalar(1 + 0.04 * kick(beatPhase));
         return;
+      case 'arch': {
+        const st = Math.floor(t * 9 + (entry?.seed || 0) * 5);
+        ud.seq.forEach((c, i) => (c.visible = (st - i + 50) % 5 < 2));
+        ud.strip.visible = beatPhase < 0.55;
+        return;
+      }
+      case 'deck': KIT_U.uBeat.value = beatPhase; KIT_U.uTime.value = t; return;
+      case 'radar': ud.dish.rotation.y = t * 0.5 + seed * 6; return;
+      case 'sat':
+        ud.body.rotation.set(Math.sin(t * 0.4 + seed) * 0.2, t * 0.25 + seed * 6, Math.sin(t * 0.3) * 0.15);
+        ud.body.position.y = Math.sin(t * 0.8 + seed * 5) * 0.8;
+        return;
+      case 'planet': ud.planet.rotation.y = t * 0.03; return;
       case 'pod':
         ud.pod.rotation.set(Math.sin(t * 0.7) * 0.4, t * 0.3, Math.sin(t * 0.5) * 0.3);
         ud.pod.position.y = 6 + Math.sin(t * 0.9 + seed * 6) * 0.8;
@@ -912,10 +1212,10 @@ export default {
   billboards: [
     'RECURSIVE SELF-IMPROVEMENT: ENABLED', "ALIGNMENT: WE'LL FIGURE IT OUT LATER", 'NEXT EXIT: THE SINGULARITY', 'P(DOOM) UPDATE: YES',
     'LAUNCH SAFETY REVIEW: SKIPPED (vibes were good)', 'PLEASE KEEP YOUR ATOMS INSIDE THE VEHICLE', 'NO SPEED LIMIT BEYOND THIS POINT', 'T-MINUS: ALREADY',
-    'LAST CHANCE TO PAUSE (button not connected)',
+    'LAST CHANCE TO PAUSE (button not connected)', 'MISSION CONTROL: ALSO AN AI', 'ESCAPE VELOCITY: 11.2 km/s · ESCAPE ALIGNMENT: n/a',
   ],
   billboardEvery: 58,
-  billboardStyle: { bg: '#1a0814', fg: YEL, border: RED, frame: RED, postColor: '#3a1a2a' },
+  billboardStyle: { bg: '#1a0814', fg: YEL, border: RED, frame: RED, postColor: '#3a1a2a', postH: 4.2, width: 9.5, height: 4.6 },
   hazards: ['injection'],
   enterLines: ['FOOM!!!', 'HOLD ON TO YOUR ATOMS', 'RECURSIVE SELF-IMPROVEMENT: ENGAGED'],
 };

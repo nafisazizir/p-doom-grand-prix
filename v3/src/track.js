@@ -694,6 +694,15 @@ export class Track {
         if (!this.gates.has(i)) { const gate = this._makeGate(i); this.gates.set(i, gate); this.scene.add(gate); }
       } else if (this.gates.has(i)) { this.scene.remove(this.gates.get(i)); this.gates.delete(i); }
     }
+    // up in space on the rainbow road, the desert below the glide must not poke through yet: hide everything past the
+    // landing until the glide starts (by then the camera swings down to frame the landing and the sky crossfades)
+    this._glideF ??= this.course.features.find((f) => f.type === 'jump' && f.glide) || null;
+    const gf = this._glideF;
+    if (gf) {
+      const hideFrom = kartZ < gf.s[0] ? gf.s[1] - 2 : Infinity;
+      for (const a of this.active) if (a.zf > gf.s[0]) a.obj.visible = a.zf < hideFrom;
+      for (const [i, gate] of this.gates) gate.visible = this.secZ[i] < hideFrom;
+    }
     // live-stat billboard: one reusable board that roasts the player's actual run
     if (!this.liveBB) this._makeLiveBB();
     if (this.liveBBz < kartZ - BEHIND || this.liveBBz === undefined) {
