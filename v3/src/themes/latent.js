@@ -6,7 +6,7 @@ import { THREE, toon, glow, G, mesh, textPanel, makeRng, FONT, MAT } from '../to
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { surface } from '../textures.js';
 import { model } from '../models.js';
-import { SPEED } from '../course.js';
+import { SPEED, Course } from '../course.js';
 
 const CYAN = '#3ff2ff', PINK = '#ff4fd8', LIME = '#39ff88', GOLD = '#ffd23f', VOID = '#0b0420', INK = '#2b1840';
 const kick = (bp) => Math.pow(1 - bp, 4); // 1 on the beat, decays to 0
@@ -190,10 +190,12 @@ function constellation(variant) {
 // =====================================================================================================
 function moonMat() {
   return once('moonMat', () => {
-    const m = surface('rock', { tint: '#f6f0e4', scale: 0.06, normalScale: 1.8 }).clone();
-    m.emissiveMap = m.map;
-    m.emissive = new THREE.Color('#e8e0ff');
-    m.emissiveIntensity = 1.5;
+    // keep the rock relief (normal map) but drop its brown albedo: a pale, softly glowing toy moon
+    const m = surface('rock', { tint: '#ffffff', scale: 0.06, normalScale: 1.8 }).clone();
+    m.map = null;
+    m.color = new THREE.Color('#f1ede4');
+    m.emissive = new THREE.Color('#d8d2f0');
+    m.emissiveIntensity = 0.55;
     return m;
   });
 }
@@ -240,7 +242,7 @@ function moonshot() {
       _m4.compose(_v.copy(_d).multiplyScalar(MR - s * 0.05).add(new THREE.Vector3(...MC)), _q, _s3.set(s, s, s * 0.55));
       kt.addM(G.torus(1, 0.22, 24), mm, _m4);
       _m4.compose(_v.copy(_d).multiplyScalar(MR - s * 0.32).add(new THREE.Vector3(...MC)), _q, _s3.set(s * 0.95, s * 0.95, s * 0.35));
-      kt.addM(G.sphere(1, 16), toon('#4a4462', { roughness: 0.95 }), _m4);
+      kt.addM(G.sphere(1, 16), toon('#a8a0bc', { roughness: 0.95 }), _m4);
     }
     // the NVDA chart: candles climbing from below the road up to the moon
     const start = [-92, -46, 52], end = [-26, 88, 8];
@@ -528,7 +530,7 @@ function setDrums(drums, value) {
 // =====================================================================================================
 function omegaSign() {
   const g = new THREE.Group();
-  const HW = 12.5, TOP = 15.5;
+  const HW = 14.2, TOP = 17; // v3: posts outside ±13, signs clear the road by > 9
   g.add(kit('omegaTruss', (kt) => {
     const steel = MAT.metal('#a8acc8', { roughness: 0.35 }), dark = MAT.paint('#3a2a6a');
     for (const s of [-1, 1]) {
@@ -568,7 +570,7 @@ function omegaSign() {
   const lamps = [];
   for (const par of [0, 1]) {
     lamps.push(kit('omegaLamps' + par, (kt) => {
-      for (let k = par; k < 14; k += 2) kt.add(G.sphere(0.32, 10), glow(k % 4 < 2 ? CYAN : PINK, { intensity: 3 }), -HW + 0.5 + k * ((2 * HW - 1) / 13), TOP - 8.7, 0.95);
+      for (let k = par; k < 14; k += 2) kt.add(G.sphere(0.32, 10), glow(k % 4 < 2 ? CYAN : PINK, { intensity: 3 }), -HW + 0.5 + k * ((2 * HW - 1) / 13), TOP - 8.3, 0.95);
     }));
     g.add(lamps[par]);
   }
@@ -811,6 +813,324 @@ function gpuSat() {
 }
 
 // =====================================================================================================
+// v3: sky-locked landmarks (planets, nebulae, the cloud sea under the rainbow road). They're spawned once at the
+// section start and then ride along with the kart at a fixed world offset, so they never pop in and barely
+// parallax, like MK's distant planets. Offsets are in the frame of the road at the section start.
+// =====================================================================================================
+const COURSE = new Course(SPEED);
+const T_RAINBOW = 59.4, T_SPACE = 61.5, T_GLIDE = 73.7;
+const _kf = {}, _rf = {};
+let _ref = null;
+function refFrame() {
+  if (_ref) return _ref;
+  COURSE.frame(T_RAINBOW * SPEED, _rf);
+  const fl = Math.hypot(_rf.tx, _rf.tz), rl = Math.hypot(_rf.rx, _rf.rz);
+  _ref = { fx: _rf.tx / fl, fz: _rf.tz / fl, rx: _rf.rx / rl, rz: _rf.rz / rl };
+  return _ref;
+}
+const smooth01 = (x) => { const u = Math.min(1, Math.max(0, x)); return u * u * (3 - 2 * u); };
+/** place a sky-locked prop: o = { f, r, u } metres (forward, right, up) from the kart in the section-start frame */
+function skyPlace(obj, t, o) {
+  const R = refFrame();
+  COURSE.frame(Math.max(T_RAINBOW, Math.min(t, T_GLIDE + 1.5)) * SPEED, _kf);
+  // planets rise over the horizon while the road climbs, then stay put
+  const rise = (1 - smooth01((t - T_RAINBOW + 0.5) / 4.5)) * (o.riseBy ?? 260);
+  obj.position.set(_kf.x + R.fx * o.f + R.rx * o.r, _kf.y + o.u - rise, _kf.z + R.fz * o.f + R.rz * o.r);
+  obj.visible = t > T_RAINBOW - 1 && t < (o.until ?? T_GLIDE + 0.3);
+}
+const noFog = (m) => { m.fog = false; return m; };
+const SKY = {
+  gasgiant: { f: 760, r: -430, u: -40 },
+  gpuplanet: { f: 520, r: 560, u: 40 },
+  nebulaA: { f: 1400, r: 300, u: 120, riseBy: 0 },
+  nebulaB: { f: 900, r: -1100, u: 80, riseBy: 0 },
+};
+
+/** a huge soft nebula: overlapping additive glow sprites in one mesh (fog-free) */
+function nebulaTex() {
+  return once('nebTex', () => {
+    const t = canvasTex(256, 256, (x) => {
+      const r = makeRng(17);
+      for (let i = 0; i < 26; i++) {
+        const cx = 128 + r.range(-70, 70), cy = 128 + r.range(-55, 55), rad = r.range(25, 80);
+        const g = x.createRadialGradient(cx, cy, 0, cx, cy, rad);
+        g.addColorStop(0, 'rgba(255,255,255,0.20)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+        x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+      }
+      const g = x.createRadialGradient(128, 128, 60, 128, 128, 128); // fade the square edge
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,1)');
+      x.globalCompositeOperation = 'destination-out'; x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+    });
+    t.colorSpace = THREE.NoColorSpace;
+    return t;
+  });
+}
+function nebula(v) {
+  const root = new THREE.Group();
+  const geo = once('nebGeo' + v, () => {
+    const r = makeRng(5 + v * 7), parts = [];
+    for (let i = 0; i < 9; i++) {
+      const s = r.range(240, 520), p = new THREE.PlaneGeometry(s, s * r.range(0.55, 0.9));
+      p.rotateZ(r.range(0, 3.14));
+      p.translate(r.range(-380, 380), r.range(-140, 160), r.range(-120, 120));
+      const n = p.attributes.position.count, col = new Float32Array(n * 3);
+      const c = new THREE.Color(v ? r.pick(['#ff4fd8', '#a04cff', '#3ff2ff', '#ff8a5a']) : r.pick(['#5a7bff', '#b43cff', '#3ff2ff', '#ff4fd8']));
+      for (let k = 0; k < n; k++) { col[k * 3] = c.r; col[k * 3 + 1] = c.g; col[k * 3 + 2] = c.b; }
+      p.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      parts.push(p);
+    }
+    return mergeGeometries(parts);
+  });
+  const mat = once('nebMat', () => new THREE.MeshBasicMaterial({ map: nebulaTex(), vertexColors: true, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, side: THREE.DoubleSide }));
+  const m = new THREE.Mesh(geo, mat);
+  m.renderOrder = -2;
+  root.add(m);
+  root.userData.face = m;
+  return root;
+}
+
+/** the cloud sea under the rainbow road: two scrolling layers of soft violet cloud, fading out at the horizon */
+function cloudTex(seed) {
+  return once('cloudTex' + seed, () => {
+    const t = canvasTex(512, 512, (x) => {
+      const r = makeRng(seed);
+      for (let i = 0; i < 150; i++) {
+        const cx = r.range(0, 512), cy = r.range(0, 512), rad = r.range(18, 70), a = r.range(0.12, 0.3);
+        for (const ox of [-512, 0, 512]) for (const oy of [-512, 0, 512]) {
+          const g = x.createRadialGradient(cx + ox, cy + oy, 0, cx + ox, cy + oy, rad);
+          g.addColorStop(0, `rgba(255,255,255,${a})`); g.addColorStop(1, 'rgba(255,255,255,0)');
+          x.fillStyle = g; x.fillRect(cx + ox - rad, cy + oy - rad, rad * 2, rad * 2);
+        }
+      }
+    }, { wrap: true });
+    t.repeat.set(9, 9);
+    return t;
+  });
+}
+function cloudFalloff() {
+  return once('cloudFall', () => {
+    const t = canvasTex(256, 256, (x) => {
+      const g = x.createRadialGradient(128, 128, 20, 128, 128, 128);
+      g.addColorStop(0, '#ffffff'); g.addColorStop(0.55, '#c8c8c8'); g.addColorStop(1, '#000000');
+      x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+    });
+    t.colorSpace = THREE.NoColorSpace;
+    return t;
+  });
+}
+function cloudSea() {
+  const root = new THREE.Group();
+  const layers = [];
+  for (const [i, y, col, op] of [[0, 0, '#7a40d8', 0.95], [1, 10, '#ff8ae8', 0.55]]) {
+    const mat = new THREE.MeshBasicMaterial({ map: cloudTex(3 + i), alphaMap: cloudFalloff(), color: col, transparent: true, opacity: op, depthWrite: false, fog: false });
+    mat.userData.op = op;
+    const m = new THREE.Mesh(once('cloudGeo', () => new THREE.CircleGeometry(1400, 64).rotateX(-Math.PI / 2)), mat);
+    m.position.y = y;
+    m.renderOrder = -1;
+    root.add(m);
+    layers.push(m);
+  }
+  // a few glowing "cloud tops" poking up (soft additive puffs)
+  root.userData.layers = layers;
+  return root;
+}
+
+/** neon lamp posts along the rainbow rails: glowing pole + chunky bevelled star (one draw call) */
+const STAR_COLS = [GOLD, CYAN, PINK, LIME];
+function starGeo() {
+  return once('starGeo', () => {
+    const sh = new THREE.Shape();
+    for (let i = 0; i <= 10; i++) {
+      const a = (i / 10) * TAU + Math.PI / 2, r = i % 2 ? 0.45 : 1;
+      if (i === 0) sh.moveTo(Math.cos(a) * r, Math.sin(a) * r); else sh.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    const g = new THREE.ExtrudeGeometry(sh, { depth: 0.3, bevelEnabled: true, bevelThickness: 0.22, bevelSize: 0.16, bevelSegments: 3, curveSegments: 4 });
+    g.translate(0, 0, -0.15);
+    return g;
+  });
+}
+function lampPost(v) {
+  const g = kit('lamp' + v, (kt) => {
+    const c = STAR_COLS[v % 4];
+    // all-emissive (one unlit draw call, no shadow pass): a pale neon pole
+    kt.add(G.cyl(0.13, 0.16, 9, 10), glow('#d8d0f4', { intensity: 0.85 }), 0, 4.5, 0);
+    kt.add(G.cyl(0.42, 0.3, 0.5, 14), glow(c, { intensity: 2 }), 0, 0.25, 0);
+    kt.add(G.torus(0.42, 0.07, 18), glow(c, { intensity: 2.5 }), 0, 3, 0, Math.PI / 2);
+    kt.add(G.torus(0.36, 0.07, 18), glow(c, { intensity: 2.5 }), 0, 6, 0, Math.PI / 2);
+    kt.add(starGeo(), glow(c, { intensity: 2.4 }), 0, 10.1, 0, 0, 0, 0, 1.35);
+    kt.bar([0, 0.45, 0], [-1.6, 0.45, 0], 0.16, glow('#d8d0f4', { intensity: 0.85 }), G.cyl(1, 1, 1, 8)); // bracket to the rail
+  });
+  return g;
+}
+
+/** rainbow hoop gates spanning the road (feet at ±15, top ≈ 17.7) with a hanging joke sign */
+const HOOP_SIGNS = [
+  ['CONTEXT WINDOW', '127,998 / 128,000 ⚠'], ['TEMPERATURE: 2.0', 'creativity zone'],
+  ['DIMENSION 7,341', 'OF 12,288'], ['GRAVITY', 'deprecated in v5'],
+];
+const HOOP_C = ['#ff3b5c', '#ff8a2a', '#ffd23f', '#39ff88', '#3ff2ff', '#5a7bff', '#b46bff'];
+function hoop(v) {
+  const g = new THREE.Group();
+  g.add(kit('hoop', (kt) => {
+    // a rainbow half-hoop (the road surface is see-through, so the arc stops just under it)
+    const arc = once('hoopArc', () => new THREE.TorusGeometry(1, 0.016, 8, 96, Math.PI + 0.3).rotateZ(-0.15));
+    HOOP_C.forEach((c, i) => { const R = 15.8 - i * 0.4; kt.add(arc, glow(c, { intensity: 1.35 }), 0, 2.2, 0, 0, 0, 0, R, R, R); });
+    // star studs along the arc + chunky chrome feet
+    for (let k = 0; k <= 10; k++) {
+      const a = -0.1 + (k / 10) * (Math.PI + 0.2);
+      kt.add(G.sphere(0.42, 12), glow('#fff6d8', { intensity: 2.2 }), Math.cos(a) * 16.25, 2.2 + Math.sin(a) * 16.25, 0);
+    }
+    for (const s of [-1, 1]) {
+      kt.add(G.cyl(1.5, 1.9, 1.2, 24), MAT.chrome('#e8e0ff'), s * 14.9, -0.2, 0);
+      kt.add(G.torus(1.75, 0.14, 28), glow(CYAN, { intensity: 2 }), s * 14.9, 0.45, 0, Math.PI / 2);
+    }
+    kt.add(G.rbox(12.6, 3.4, 0.4, 0.18), MAT.paint('#f4f0ff'), 0, 13.7, -0.2);
+    for (const s of [-1, 1]) kt.add(G.cyl(0.07, 0.07, 2.4, 6), MAT.chrome(), s * 4.5, 16.4, -0.2);
+  }));
+  const st = { width: 12, height: 2.9, bg: VOID, fg: v % 2 ? CYAN : GOLD, border: PINK, borderW: 10, radius: 18 };
+  const p = textPanel(HOOP_SIGNS[v % HOOP_SIGNS.length], st);
+  p.material = p.material.clone(); p.material.side = THREE.FrontSide;
+  p.position.set(0, 13.7, 0.02);
+  g.add(p);
+  const b = new THREE.Mesh(p.geometry, p.material);
+  b.position.set(0, 13.7, -0.42);
+  b.rotation.y = Math.PI;
+  g.add(b);
+  return g;
+}
+
+/** THE LOSS LANDSCAPE: a floating island of a loss surface, coloured like a plot, with SGD rolling into a local minimum */
+function lossGeo() {
+  return once('lossGeo', () => {
+    const N = 64, S = 70;
+    const geo = new THREE.PlaneGeometry(S, S, N, N).rotateX(-Math.PI / 2);
+    const p = geo.attributes.position, col = new Float32Array(p.count * 3);
+    const wells = [[-12, 10, -9, 9], [14, -8, -12, 11], [6, 16, -5, 6], [-16, -14, 7, 10], [0, 0, 9, 13], [20, 20, 6, 8]];
+    const c = new THREE.Color(), lo = new THREE.Color('#2a1a8a'), mid = new THREE.Color('#1ab8a0'), hi = new THREE.Color('#ffe14a');
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), z = p.getZ(i);
+      let h = 4 + 1.2 * Math.sin(x * 0.3) * Math.cos(z * 0.27);
+      for (const [wx, wz, a, r] of wells) h += a * Math.exp(-((x - wx) ** 2 + (z - wz) ** 2) / (r * r));
+      const edge = Math.max(Math.abs(x), Math.abs(z)) / (S / 2);
+      h *= 1 - Math.pow(edge, 8) * 0.6;
+      p.setY(i, h);
+      const u = Math.min(1, Math.max(0, (h + 6) / 22));
+      c.copy(u < 0.5 ? lo : mid).lerp(u < 0.5 ? mid : hi, u < 0.5 ? u * 2 : (u - 0.5) * 2);
+      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.computeVertexNormals();
+    return geo;
+  });
+}
+function lossLandscape() {
+  const [root, bob] = floaty();
+  const surf = new THREE.Mesh(lossGeo(), once('lossMat', () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.1, emissive: new THREE.Color('#2a1060'), emissiveIntensity: 0.6 })));
+  bob.add(surf);
+  // the rocky underside of the island
+  bob.add(kit('lossRock', (kt) => {
+    const rock = toon('#3a2a5a', { roughness: 0.85 });
+    kt.add(G.cone(36, 34, 8), rock, 0, -16, 0, Math.PI, Math.PI / 8, 0, 1, 1, 1);
+    kt.add(G.cone(16, 22, 7), rock, 14, -30, 8, Math.PI, 0.3, 0.1, 1, 1, 1);
+    kt.add(G.box(70.4, 3, 70.4), toon('#24184a', { roughness: 0.6 }), 0, -1.2, 0);
+  }));
+  const ball = new THREE.Group();
+  ball.add(mesh(G.sphere(2.2, 24), glow('#ff4fd8', { intensity: 2.6 })));
+  bob.add(ball);
+  const sign = textPanel(['YOU ARE HERE:', 'LOCAL MINIMUM 📍'], { width: 22, height: 6, bg: VOID, fg: GOLD, border: GOLD, borderW: 12, radius: 22 });
+  sign.position.set(0, 30, 0);
+  bob.add(sign);
+  const gm = textPanel('GLOBAL MINIMUM → (trust me)', { width: 22, height: 2.6, bg: null, fg: CYAN, stroke: INK, strokeW: 10 });
+  gm.position.set(0, 25.6, 0.2);
+  bob.add(gm);
+  root.userData.ball = ball;
+  return root;
+}
+const _lossH = (x, z) => {
+  let h = 4 + 1.2 * Math.sin(x * 0.3) * Math.cos(z * 0.27);
+  for (const [wx, wz, a, r] of [[-12, 10, -9, 9], [14, -8, -12, 11], [6, 16, -5, 6], [-16, -14, 7, 10], [0, 0, 9, 13], [20, 20, 6, 8]]) h += a * Math.exp(-((x - wx) ** 2 + (z - wz) ** 2) / (r * r));
+  return h;
+};
+
+/** ATTENTION IS ALL YOU NEED: a floating tower drawn like the paper's figure (encoder stack, ×96 layers) */
+function attnTex() {
+  return once('attnTex', () => canvasTex(512, 1536, (x, w, h) => {
+    x.fillStyle = '#0b0420'; x.fillRect(0, 0, w, h);
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    const block = (y, hh, fill, text, fs = 34) => {
+      x.fillStyle = fill; x.strokeStyle = '#1a0f2e'; x.lineWidth = 6;
+      x.beginPath(); x.roundRect(60, y, w - 120, hh, 18); x.fill(); x.stroke();
+      x.fillStyle = '#1a0f2e'; x.font = `700 ${fs}px ${FONT}`; x.fillText(text, w / 2, y + hh / 2 + 2);
+    };
+    x.fillStyle = '#ffffff'; x.font = `800 46px ${FONT}`;
+    x.fillText('ATTENTION IS', w / 2, 60); x.fillText('ALL YOU NEED', w / 2, 112);
+    x.font = `600 26px ${FONT}`; x.fillStyle = '#ff9fd8'; x.fillText('(and 10²⁶ FLOPs, and a power plant)', w / 2, 152);
+    let y = 200;
+    for (let l = 0; l < 3; l++) {
+      block(y, 70, '#f7d9a8', 'Add & Norm', 30); y += 86;
+      block(y, 130, '#9fd8ff', 'Feed Forward'); y += 146;
+      block(y, 70, '#f7d9a8', 'Add & Norm', 30); y += 86;
+      block(y, 130, '#ffb27a', 'Multi-Head Attention'); y += 166;
+    }
+    x.fillStyle = '#3ff2ff'; x.font = `800 60px ${FONT}`; x.fillText('× 96', w / 2, y + 20);
+    x.font = `600 24px ${FONT}`; x.fillStyle = '#c8b8ff'; x.fillText('(rest of the layers not shown: vibes)', w / 2, y + 66);
+  }));
+}
+function attnTower() {
+  const [root, bob] = floaty();
+  bob.add(kit('attn', (kt) => {
+    const frame = MAT.paint('#2a1a5a'), chrome = MAT.chrome('#e8e8f4');
+    kt.add(G.rbox(26, 78, 10, 1.2), frame, 0, 39, -0.6);
+    kt.add(G.rbox(27.4, 1.6, 11.4, 0.6), chrome, 0, 0, -0.6);
+    kt.add(G.rbox(27.4, 1.6, 11.4, 0.6), chrome, 0, 78, -0.6);
+    for (let i = 0; i < 9; i++) kt.add(G.box(27.6, 0.3, 11.6), glow(i % 2 ? PINK : CYAN, { intensity: 2 }), 0, 6 + i * 8.4, -0.6);
+    // residual connection arrows on the sides
+    for (const s of [-1, 1]) for (let i = 0; i < 4; i++) {
+      kt.add(G.torus(4, 0.3, 24), glow(LIME, { intensity: 2.2 }), s * 13.6, 12 + i * 18, 4, 0, Math.PI / 2, 0, 1, 1, 1);
+    }
+    // thruster pod underneath (everything floats in latent space)
+    kt.add(G.cyl(6, 9, 6, 24), frame, 0, -4, -0.6);
+    kt.add(G.cyl(5, 3, 2.5, 24), glow('#ffb84a', { intensity: 2.4 }), 0, -8.2, -0.6);
+  }));
+  const face = new THREE.Mesh(G.plane(23, 69), once('attnMat', () => new THREE.MeshBasicMaterial({ map: attnTex() })));
+  face.material.color.setScalar(1.15);
+  face.position.set(0, 39, 4.45);
+  bob.add(face);
+  return root;
+}
+
+/** rockets flying up through latent space, NVDA livery, with an animated flame + puffy trail */
+function rocket(v) {
+  const [root, bob] = floaty();
+  const fly = new THREE.Group();
+  bob.add(fly);
+  const dir = [0.25, 1, -0.15];
+  fly.add(kit('rocket', (kt) => {
+    rocketKit(kt, 3.2, 0, 0, 0, dir);
+    // smoke trail puffs
+    _d.set(...dir).normalize();
+    for (let i = 0; i < 9; i++) {
+      const k = 14 + i * 4.2, r = 2.0 + i * 0.55;
+      kt.add(G.sphere(1, 16), toon('#f4eefc', { roughness: 0.9 }), -_d.x * k + Math.sin(i * 2.1) * 0.8, -_d.y * k, -_d.z * k + Math.cos(i * 1.7) * 0.8, 0, 0, 0, r);
+    }
+  }));
+  const flame = new THREE.Group();
+  _d.set(...dir).normalize();
+  flame.position.set(-_d.x * 10.5, -_d.y * 10.5, -_d.z * 10.5);
+  flame.quaternion.setFromUnitVectors(_up, _d.clone().negate());
+  flame.add(mesh(G.cone(2.2, 9, 16), glow('#ff9a3a', { intensity: 1.7 }), 0, 4.5, 0));
+  flame.add(mesh(G.cone(1.2, 5.5, 14), glow('#fff0b0', { intensity: 2.1 }), 0, 2.8, 0));
+  fly.add(flame);
+  const lbl = textPanel(v % 2 ? ['MOONSHOT v2', '(v1 is in a better place)'] : ['NVDA EXPRESS', 'next stop: the moon'], { width: 15, height: 4, bg: VOID, fg: LIME, border: LIME, borderW: 10, radius: 16 });
+  lbl.position.set(-9, -6, 4);
+  fly.add(lbl);
+  root.userData.flame = flame;
+  root.userData.fly = fly;
+  root.userData.dir = _d.clone();
+  return root;
+}
+
+// =====================================================================================================
 export default {
   id: 'latent',
   title: 'LATENT SPACE',
@@ -831,54 +1151,123 @@ export default {
     const out = [];
     const rel = zf - sec.start * SPEED;
     const at = (a) => rel >= a && rel < a + 10;
+    // section map (metres from the start): climb 0–213, 120° left 213–403 (inner side −x), 80° right 403–543
+    // (inner +x), glide from 543. Everything floats at road height; all placements are exact (abs).
+    const P = (p) => out.push({ abs: true, ...p });
+    // sky-locked landmarks: spawned once, they ride along with the kart until the glide (dz keeps them alive)
+    if (at(0)) {
+      const dz = 528 - rel;
+      P({ kind: 'cloudsea', x: 0, dz });
+      P({ kind: 'gasgiant', x: 0, dz, scale: 3.4, rotY: 0.4 });
+      P({ kind: 'gpuplanet', x: 0, dz, scale: 3 });
+      P({ kind: 'nebulaA', x: 0, dz, scale: 1.6 });
+      P({ kind: 'nebulaB', x: 0, dz, scale: 1.4 });
+    }
     // giant landmarks
-    if (at(300)) out.push({ kind: 'moonshot', x: 112, y: 0, rotY: -0.3 });
-    if (at(390)) out.push({ kind: 'station', x: -86, y: 24 });
-    if (at(170)) out.push({ kind: 'basilisk', x: -46, y: -16, rotY: 0.55, scale: 1.25 });
-    if (at(480)) out.push({ kind: 'basilisk', x: 50, y: -16, rotY: -0.6, scale: 1.25 });
-    if (at(250)) out.push({ kind: 'gasgiant', x: -240, y: 50, rotY: 0.4 });
-    if (at(560)) out.push({ kind: 'gpuplanet', x: 190, y: 20, rotY: -0.3 });
-    if (at(110) || at(345)) out.push({ kind: 'omega', x: 0 });
-    if (at(60)) out.push({ kind: 'odometer', x: 31, y: 1, rotY: -0.45, scale: 1.25 });
-    if (at(220)) out.push({ kind: 'odometer', x: -31, y: 3, rotY: 0.45, scale: 1.25 });
-    if (at(440)) out.push({ kind: 'odometer', x: -31, y: 2, rotY: 0.45, scale: 1.25 });
-    if (at(140)) out.push({ kind: 'satellite', x: 19, y: 2, rotY: -0.4 });
-    if (at(410)) out.push({ kind: 'satellite', x: 20, y: 4, rotY: -0.4 });
-    if (at(80) || at(280) || at(520)) out.push({ kind: 'gpusat', x: rel > 250 && rel < 300 ? 20 : -20, y: 3, rotY: rel > 250 && rel < 300 ? -0.4 : 0.4 });
+    if (at(300)) P({ kind: 'moonshot', x: 170, y: 0, rotY: -0.3, scale: 1.5 });
+    if (at(330)) P({ kind: 'station', x: -150, y: 45, scale: 2.4 });
+    if (at(170)) P({ kind: 'basilisk', x: -80, y: -34, rotY: 0.55, scale: 1.9 });
+    if (at(480)) P({ kind: 'basilisk', x: 85, y: -34, rotY: -0.6, scale: 1.9 });
+    if (at(190)) P({ kind: 'loss', x: 95, y: -18, rotY: 0.3 });
+    if (at(470)) P({ kind: 'loss', x: -100, y: -14, rotY: -0.5 });
+    if (at(260)) P({ kind: 'attn', x: -70, y: -30, rotY: 0.5, scale: 1.25 });
+    if (at(520)) P({ kind: 'attn', x: 72, y: -26, rotY: -0.5, scale: 1.25 });
+    if (at(150)) P({ kind: 'rocket0', x: 78, y: -14 });
+    if (at(320)) P({ kind: 'rocket1', x: -58, y: -6, rotY: 0.6 });
+    if (at(430)) P({ kind: 'rocket0', x: 52, y: -20, rotY: -0.4 });
+    // the road itself: gantries, rainbow hoops, star lamps on the rails
+    if (at(110) || at(345)) P({ kind: 'omega', x: 0 });
+    for (const [r0, v] of [[40, 0], [190, 1], [280, 2], [420, 3], [505, 1]]) if (at(r0)) P({ kind: 'hoop' + v, x: 0 });
+    {
+      const side = Math.floor(rel / 10) % 2 ? 1 : -1;
+      P({ kind: 'lamp' + (Math.floor(rel / 20) % 4), x: side * 12.4, rotY: side > 0 ? 0 : Math.PI });
+    }
+    // mid-size floaters
+    if (at(60)) P({ kind: 'odometer', x: 44, y: 1, rotY: -0.45, scale: 1.8 });
+    if (at(220)) P({ kind: 'odometer', x: -44, y: 3, rotY: 0.45, scale: 1.8 });
+    if (at(440)) P({ kind: 'odometer', x: -44, y: 2, rotY: 0.45, scale: 1.8 });
+    if (at(140)) P({ kind: 'satellite', x: 30, y: 2, rotY: -0.4, scale: 1.8 });
+    if (at(410)) P({ kind: 'satellite', x: 31, y: 4, rotY: -0.4, scale: 1.8 });
+    if (at(80) || at(280) || at(520)) {
+      const r = rel > 250 && rel < 300;
+      P({ kind: 'gpusat', x: r ? 33 : -33, y: 3, rotY: r ? -0.4 : 0.4, scale: 2.2 });
+    }
     for (const side of [-1, 1]) {
       const r = rng();
-      if (r < 0.42) out.push({ kind: 'embed' + rng.int(0, 5), x: side * rng.range(15, 26), y: rng.range(-4, 5), rotY: rng.range(-0.5, 0.5) });
-      else if (r < 0.75) out.push({ kind: 'rock' + rng.int(0, 2), x: side * rng.range(22, 75), y: rng.range(-24, 26), scale: rng.range(3, 13), rotY: rng.range(0, 6.28) });
+      if (r < 0.4) P({ kind: 'embed' + rng.int(0, 5), x: side * rng.range(24, 42), y: rng.range(-6, 6), rotY: rng.range(-0.5, 0.5), scale: rng.range(1.7, 2.3) });
+      else if (r < 0.8) P({ kind: 'rock' + rng.int(0, 2), x: side * rng.range(36, 160), y: rng.range(-40, 40), scale: rng.range(5, 26), rotY: rng.range(0, 6.28) });
     }
-    if (rng.chance(0.22)) out.push({ kind: 'embed' + rng.int(0, 5), x: rng.range(-4, 4), y: 9, dz: 5, rotY: rng.range(-0.4, 0.4) });
+    if (rng.chance(0.15)) P({ kind: 'embed' + rng.int(0, 5), x: rng.range(-4, 4), y: 9, dz: 5, rotY: rng.range(-0.4, 0.4), scale: 1.6 });
     return out;
   },
   makeProp(kind) {
-    if (kind.startsWith('embed')) return constellation(+kind.slice(5) || 0);
-    if (kind.startsWith('rock')) return asteroid(+kind.slice(4) || 0);
-    switch (kind) {
-      case 'moonshot': return moonshot();
-      case 'basilisk': return basilisk();
-      case 'odometer': return odometer();
-      case 'omega': return omegaSign();
-      case 'station': return station();
-      case 'gasgiant': return gasGiant();
-      case 'gpuplanet': return gpuPlanet();
-      case 'satellite': return satellite();
-      case 'gpusat': return gpuSat();
+    let o;
+    if (kind.startsWith('embed')) o = constellation(+kind.slice(5) || 0);
+    else if (kind.startsWith('rocket')) o = rocket(+kind.slice(6) || 0);
+    else if (kind.startsWith('rock')) o = asteroid(+kind.slice(4) || 0);
+    else if (kind.startsWith('lamp')) o = lampPost(+kind.slice(4) || 0);
+    else if (kind.startsWith('hoop')) o = hoop(+kind.slice(4) || 0);
+    else if (kind.startsWith('nebula')) o = nebula(kind === 'nebulaB' ? 1 : 0);
+    else {
+      switch (kind) {
+        case 'moonshot': o = moonshot(); break;
+        case 'basilisk': o = basilisk(); break;
+        case 'odometer': o = odometer(); break;
+        case 'omega': o = omegaSign(); break;
+        case 'station': o = station(); break;
+        case 'gasgiant': o = gasGiant(); break;
+        case 'gpuplanet': o = gpuPlanet(); break;
+        case 'satellite': o = satellite(); break;
+        case 'gpusat': o = gpuSat(); break;
+        case 'cloudsea': o = cloudSea(); break;
+        case 'loss': o = lossLandscape(); break;
+        case 'attn': o = attnTower(); break;
+      }
     }
+    if (o && (SKY[kind] || kind === 'cloudsea')) o.traverse((m) => { if (m.material) noFog(m.material); });
+    return o;
   },
   animate(obj, kind, t, beatPhase, entry) {
     const k = kick(beatPhase);
     const ud = obj.userData;
     const sd = entry ? entry.seed : 0;
     if (ud.bob) ud.bob.position.y = Math.sin(t * 0.9 + sd * TAU) * (kind === 'basilisk' ? 1.2 : 0.6);
+    if (SKY[kind]) {
+      skyPlace(obj, t, SKY[kind]);
+      // sink below the horizon during the glide while the sky turns to desert
+      obj.position.y -= smooth01((t - T_GLIDE + 0.5) / 1.3) * 700;
+      if (kind.startsWith('nebula')) { COURSE.frame(Math.min(t, T_GLIDE) * SPEED, _kf); obj.lookAt(_kf.x, _kf.y + 40, _kf.z); }
+      else if (ud.planet) ud.planet.rotation.y = t * 0.03;
+      return;
+    }
+    if (kind === 'cloudsea') {
+      const tt = Math.min(t, T_GLIDE);
+      COURSE.frame(Math.max(T_RAINBOW, tt) * SPEED, _kf);
+      obj.rotation.set(0, 0, 0);
+      obj.position.set(_kf.x, _kf.y - 46, _kf.z);
+      const fade = (1 - smooth01((t - T_GLIDE + 0.5) / 0.8)) * smooth01((t - T_RAINBOW + 0.6) / 2.5);
+      obj.visible = fade > 0.01;
+      ud.layers.forEach((m, i) => {
+        m.material.opacity = m.material.userData.op * fade;
+        m.material.map.offset.set(_kf.x / 311.1 + t * (0.004 + i * 0.006), -_kf.z / 311.1 + t * 0.002 * (i ? -1 : 1));
+      });
+      return;
+    }
+    if (kind === 'moonshot') obj.visible = t > T_RAINBOW - 0.5;
     if (ud.spin && kind.startsWith('embed')) {
       ud.spin.rotation.y = t * 0.45 + sd * TAU;
       ud.spin.scale.setScalar(1 + 0.16 * k);
       ud.lbl.scale.setScalar(1 + 0.06 * k);
+    } else if (kind.startsWith('rocket')) {
+      const f = 1 + 0.3 * k + Math.sin(t * 41) * 0.1;
+      ud.flame.scale.set(1 + 0.12 * k, f, 1 + 0.12 * k);
+      ud.fly.position.copy(ud.dir).multiplyScalar(Math.max(0, t - T_RAINBOW) * 6);
     } else if (kind.startsWith('rock')) {
       ud.spin.rotation.set(t * 0.21 + sd * 9, t * 0.33 + sd * 5, 0);
+    } else if (kind === 'loss') {
+      // SGD: the ball rolls around the bowl it's stuck in, forever
+      const a = t * 0.9 + sd * 6, x = 14 + Math.cos(a) * (3 + Math.sin(t * 0.37) * 1.5), z = -8 + Math.sin(a) * 3;
+      ud.ball.position.set(x, _lossH(x, z) + 2.1, z);
     } else if (kind === 'basilisk') {
       ud.boom.scale.setScalar(0.7 + 0.5 * k);
       ud.boom.rotation.z = Math.sin(t * 9) * 0.05;
@@ -898,8 +1287,6 @@ export default {
     } else if (kind === 'station') {
       ud.spin.rotation.y = t * 0.12 + sd * TAU;
       ud.beacon.visible = Math.floor(t * 2) % 2 === 0;
-    } else if (kind === 'gasgiant' || kind === 'gpuplanet') {
-      ud.planet.rotation.y = t * 0.03;
     } else if (kind === 'satellite') {
       ud.sparks.visible = Math.sin(t * 23 + sd * 50) > 0.2;
       ud.tilt.rotation.y = Math.sin(t * 0.4 + sd) * 0.3;

@@ -26,10 +26,32 @@ for (const [k, c] of Object.entries(CAPS)) {
   spotMat[k] = new THREE.MeshBasicMaterial({ color: new THREE.Color(c.spot).multiplyScalar(2.6) });
   spotMat[k].userData.base = new THREE.Color(c.spot);
   spotMat[k].userData.noMerge = capMat[k].userData.noMerge = true;
-  gillMat[k] = toon(c.gill, { roughness: 0.55, emissive: '#5a3a9a', emissiveIntensity: 0.35 });
+  // v3: the gills glow in the cap's colour (you drive *under* the canopy now, so the undersides are on screen)
+  gillMat[k] = toon(c.gill, { roughness: 0.55, emissive: c.emi, emissiveIntensity: 0.42 });
 }
 const pulseMats = Object.values(capMat), pulseSpots = Object.values(spotMat);
-const STEM = toon('#efe6ff', { roughness: 0.55, emissive: '#5a3a9a', emissiveIntensity: 0.35 });
+// stems: fibrous, darker at the foot, with a faint glowing band under the cap (canvas texture: u around, v up)
+function stemTex() {
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 256;
+  const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 256, 0, 0);
+  g.addColorStop(0, '#8a7aa6'); g.addColorStop(0.3, '#d2c6e6'); g.addColorStop(0.75, '#f4eefc'); g.addColorStop(1, '#fffaff');
+  x.fillStyle = g; x.fillRect(0, 0, 128, 256);
+  const rng = makeRng(99);
+  for (let i = 0; i < 70; i++) {
+    x.strokeStyle = rng() < 0.5 ? 'rgba(70,40,110,0.16)' : 'rgba(255,255,255,0.18)';
+    x.lineWidth = 1 + rng() * 2.5;
+    const x0 = rng() * 128;
+    x.beginPath(); x.moveTo(x0, 256); x.bezierCurveTo(x0 + (rng() - 0.5) * 12, 170, x0 + (rng() - 0.5) * 12, 80, x0 + (rng() - 0.5) * 8, 0); x.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = THREE.RepeatWrapping;
+  t.repeat.set(3, 1);
+  return t;
+}
+const STEM = new THREE.MeshPhysicalMaterial({ map: stemTex(), roughness: 0.5, clearcoat: 0.5, clearcoatRoughness: 0.3, emissive: new THREE.Color('#4a2a8a'), emissiveIntensity: 0.32, sheen: 0.6, sheenColor: new THREE.Color('#d8b8ff') });
 const EYE_WHITE = physical('#fbf7ff', { roughness: 0.12, clearcoat: 1, emissive: '#5a5070', emissiveIntensity: 0.6 });
 const PUPIL = toon('#07000f', { roughness: 0.1 });
 const SHOG_SKIN = new THREE.MeshPhysicalMaterial({
@@ -61,7 +83,8 @@ const SMILE = new THREE.TorusGeometry(1, 0.16, 6, 16, Math.PI);
 // mushrooms
 // =====================================================================================================
 /** glossy mushroom: r = cap radius, h = stem height. Cap is a dyn group (squashes on the beat). */
-function mushroom(col, r = 2.6, h = 4, nSpots = 7, seed = 1, stat = false, noGill = false) {
+const VINE = toon('#1d5a40', { roughness: 0.5, emissive: '#0d4a32', emissiveIntensity: 0.6 });
+function mushroom(col, r = 2.6, h = 4, nSpots = 7, seed = 1, stat = false, noGill = false, vines = 0) {
   const g = new THREE.Group();
   const rng = makeRng(seed);
   const stem = mesh(STEM_GEO, STEM, 0, 0, 0);
@@ -85,18 +108,68 @@ function mushroom(col, r = 2.6, h = 4, nSpots = 7, seed = 1, stat = false, noGil
     // point on the lathe dome (approx. ellipsoid r x 0.78r)
     const y = Math.sqrt(Math.max(0, 1 - rho * rho)) * 0.78 + 0.02;
     const sr = r * (0.09 + rng() * 0.07);
-    const s = mesh(G.sphere(1, 10), spotMat[col], Math.sin(az) * rho * r * 0.99, y * r, Math.cos(az) * rho * r * 0.99);
+    const s = mesh(G.sphere(1, 12), spotMat[col], Math.sin(az) * rho * r * 0.99, y * r, Math.cos(az) * rho * r * 0.99);
     s.scale.set(sr, sr * 0.45, sr);
     s.lookAt(Math.sin(az) * rho * 3 * r, y * r * 2.2 + r, Math.cos(az) * rho * 3 * r);
     s.rotateX(Math.PI / 2);
     cap.add(s);
   }
+  // glowing vines hanging off the rim (lianas with bioluminescent beads, like a jungle canopy)
+  const bead = spotMat[col]; // same material as the cap spots → merged into one draw call, pulses on the beat
+  for (let i = 0; i < vines; i++) {
+    const az = (i / vines) * Math.PI * 2 + rng() * 0.5, rho = r * (0.7 + rng() * 0.22);
+    const L = r * (0.45 + rng() * 0.6);
+    const x = Math.sin(az) * rho, z = Math.cos(az) * rho;
+    const strand = mesh(G.cyl(0.07, 0.05, 1, 6), gillMat[col], x, -L / 2, z);
+    strand.scale.set(r / 6, L, r / 6);
+    cap.add(strand);
+    const nb = Math.max(2, Math.round(L / (r * 0.26)));
+    for (let k = 1; k <= nb; k++) {
+      const bs = r * (k === nb ? 0.055 : 0.026);
+      const b = mesh(G.sphere(1, 10), bead, x, -L * (k / nb), z);
+      b.scale.set(bs, bs * (k === nb ? 1.35 : 1), bs);
+      cap.add(b);
+    }
+  }
   g.add(cap);
   g.userData.caps = stat ? [] : [cap];
   return g;
 }
+/** bake() skips textured meshes: merge every mesh using `mat` under root (outside dyn groups) into one cached mesh */
+const _texMerge = new Map(), _invM = new THREE.Matrix4(), _mm = new THREE.Matrix4();
+function mergeMat(root, mat, key) {
+  root.updateMatrixWorld(true);
+  const list = [];
+  root.traverse((o) => {
+    if (!o.isMesh || o.material !== mat) return;
+    for (let p = o; p && p !== root; p = p.parent) if (p.userData.dyn) return;
+    list.push(o);
+  });
+  if (list.length < 2) return;
+  let geo = _texMerge.get(key);
+  if (!geo) {
+    _invM.copy(root.matrixWorld).invert();
+    geo = mergeGeometries(list.map((o) => {
+      const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      for (const a of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(a)) g.deleteAttribute(a);
+      return g.applyMatrix4(_mm.multiplyMatrices(_invM, o.matrixWorld));
+    }));
+    geo.computeBoundingSphere();
+    _texMerge.set(key, geo);
+  }
+  for (const o of list) o.parent.remove(o);
+  root.add(new THREE.Mesh(geo, mat));
+}
+// v3 sizes (world units, the kart+driver is 1.86 tall): understory toadstools ≈ 5, tall ≈ 17, canopy megas ≈ 33
+// (caps overhang the road like a jungle roof), far ≈ 36, horizon giants ≈ 105
 function shroom(col, size) {
-  const g = size === 'mega' ? mushroom(col, 3, 5.2, 9, col.length * 7) : size === 'tall' ? mushroom(col, 2.2, 5.5, 6, col.length * 3, true) : size === 'far' ? mushroom(col, 2.2, 5.5, 6, col.length * 5, true, true) : mushroom(col, 2.6, 3.6, 7, col.length, true);
+  const sd = col.length;
+  const g = size === 'mega' ? mushroom(col, 9, 25, 16, sd * 7, false, false, 9)
+    : size === 'tall' ? mushroom(col, 4.6, 13, 10, sd * 3, true, false, 4)
+    : size === 'far' ? mushroom(col, 8, 28, 11, sd * 5, true, true)
+    : size === 'giant' ? mushroom(col, 26, 82, 14, sd * 11, true, true)
+    : mushroom(col, 2.6, 3.6, 7, sd, true);
+  mergeMat(g, STEM, 'stem' + col + size);
   bake(g, 'shroom' + col + size);
   for (const c of g.userData.caps) bake(c, 'cap' + col + size + c.position.y.toFixed(2));
   return g;
@@ -123,15 +196,18 @@ function shroomCluster(seed) {
     g.add(moss);
   }
   // two single-sided faces back to back: clusters spawn at random headings, and a DoubleSide panel reads mirrored from behind
-  const sign = textPanel(['DO NOT', 'EAT ⚠'], { width: 1.6, height: 1, bg: '#fff04a', fg: '#2b1840', border: '#2b1840', borderW: 10, radius: 14 });
+  // v3: a proper little road sign on a post (≈ 4.5 tall, MK sign scale)
+  const sign = textPanel(['DO NOT', 'EAT ⚠'], { width: 2.4, height: 1.5, bg: '#fff04a', fg: '#2b1840', border: '#2b1840', borderW: 10, radius: 14 });
   if (!signFront) { signFront = sign.material.clone(); signFront.side = THREE.FrontSide; }
   sign.material = signFront;
   const signBack = new THREE.Mesh(sign.geometry, signFront);
   signBack.rotation.y = Math.PI;
   sign.add(signBack);
-  sign.position.set(0.4, 0.55, 2.4);
-  sign.rotation.x = -0.25;
+  sign.position.set(0.6, 3.7, 2.5);
+  sign.rotation.z = 0.06;
   g.add(sign);
+  g.add(mesh(G.cyl(0.09, 0.11, 3.2, 8), MAT.wood('#6a4428'), 0.6, 1.6, 2.45));
+  mergeMat(g, STEM, 'stemCluster' + seed);
   bake(g, 'cluster' + seed);
   return g;
 }
@@ -173,19 +249,34 @@ function glowPlant(seed) {
   g.userData.glowbulbs = bulbs;
   return g;
 }
+/** glossy tube sponges with flared glowing lips (lathe tubes: smooth, toy-like) */
+const TUBE_GEO = new THREE.LatheGeometry([V(0.0, 0), V(0.95, 0), V(1.0, 0.08), V(0.86, 0.3), V(0.74, 0.62), V(0.8, 0.86), V(1.0, 0.97), V(1.12, 1.0), V(1.06, 1.02), V(0.9, 0.99), V(0.72, 0.92), V(0.6, 0.8)], 22);
+const LIP_GEO = new THREE.TorusGeometry(1.09, 0.06, 8, 28);
+const TUBE_IN = new THREE.CircleGeometry(0.62, 20);
 function tubeCoral(seed) {
   const g = new THREE.Group();
   const rng = makeRng(seed * 7 + 3);
-  const body = physical('#4a1a8a', { roughness: 0.35, clearcoat: 1, emissive: '#2a0a5a', emissiveIntensity: 0.8 });
-  const rim = glow(seed % 2 ? '#39ff9c' : '#ff3df0', { intensity: 2.6 });
-  for (let i = 0; i < 6; i++) {
-    const h = 1.5 + rng() * 4.5, r = 0.35 + rng() * 0.35, a = rng() * Math.PI * 2, d = rng() * 1.5;
-    const x = Math.cos(a) * d, z = Math.sin(a) * d;
-    g.add(mesh(G.cyl(r, r * 1.3, h, 12, 1), body, x, h / 2, z));
-    const t = mesh(G.torus(r, 0.09, 14), rim, x, h, z);
-    t.rotation.x = Math.PI / 2;
+  const body = physical(seed % 2 ? '#5a1a9a' : '#a01a7a', { roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.1, emissive: '#2a0a5a', emissiveIntensity: 0.7 });
+  const rim = glow(seed % 2 ? '#39ff9c' : '#ff9ae8', { intensity: 2.6 });
+  const hole = glow(seed % 2 ? '#0a3a2a' : '#3a0a3a', { intensity: 1 });
+  for (let i = 0; i < 7; i++) {
+    const h = 1.5 + rng() * 4.5, r = 0.32 + rng() * 0.3, a = rng() * Math.PI * 2, d = 0.3 + rng() * 1.5;
+    const x = Math.cos(a) * d, z = Math.sin(a) * d, lean = (rng() - 0.5) * 0.35;
+    const t = mesh(TUBE_GEO, body, x, 0, z);
+    t.scale.set(r, h, r);
+    t.rotation.z = lean;
     g.add(t);
-    g.add(mesh(G.cyl(r * 0.85, r * 0.85, 0.05, 12), glow('#0a0018', { intensity: 1 }), x, h - 0.05, z));
+    const top = new THREE.Vector3(0, h * 1.0, 0).applyEuler(t.rotation).add(t.position);
+    const lip = mesh(LIP_GEO, rim, top.x, top.y, top.z);
+    lip.scale.set(r, r, r * 1.0);
+    lip.rotation.set(Math.PI / 2, 0, 0);
+    lip.rotateY(-lean);
+    g.add(lip);
+    const hl = mesh(TUBE_IN, hole, top.x, top.y - 0.05, top.z);
+    hl.scale.setScalar(r * 1.4);
+    hl.rotation.set(-Math.PI / 2, 0, 0);
+    hl.rotateY(-lean);
+    g.add(hl);
   }
   bake(g, 'coral' + seed);
   return g;
@@ -613,6 +704,7 @@ function bagOfShrooms() {
     m.position.y = 2.6 * s * 0.7;
     g.add(m);
   }
+  mergeMat(g, STEM, 'stemBag');
   bake(g, 'bag');
   return g;
 }
@@ -717,6 +809,283 @@ function maskStall() {
 }
 
 // =====================================================================================================
+// v3 jungle layers: giant glossy leaves, ground mist, joke road signs, vine arches, swamp lily pads
+// =====================================================================================================
+function canvasTex(w, h, draw) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+/** leaf albedo + emissive (bioluminescent veins). Painted on a 128x256 canvas: u across, v along the leaf. */
+let _leafMat = null;
+function leafMat() {
+  if (_leafMat) return _leafMat;
+  const veins = (x, w, h, col, lw) => {
+    x.strokeStyle = col; x.lineCap = 'round';
+    x.lineWidth = lw * 1.6;
+    x.beginPath(); x.moveTo(w / 2, h); x.lineTo(w / 2, 4); x.stroke();
+    x.lineWidth = lw;
+    for (let i = 1; i < 11; i++) {
+      const y = h - i * (h / 11.5);
+      for (const s of [-1, 1]) { x.beginPath(); x.moveTo(w / 2, y); x.quadraticCurveTo(w / 2 + s * w * 0.22, y - 10, w / 2 + s * w * 0.46, y - 30); x.stroke(); }
+    }
+  };
+  const map = canvasTex(128, 256, (x, w, h) => {
+    const g = x.createLinearGradient(0, 0, w, 0);
+    g.addColorStop(0, '#2c9a6a'); g.addColorStop(0.5, '#0c4a34'); g.addColorStop(1, '#2c9a6a');
+    x.fillStyle = g; x.fillRect(0, 0, w, h);
+    const g2 = x.createLinearGradient(0, 0, 0, h);
+    g2.addColorStop(0, 'rgba(120,255,200,0.25)'); g2.addColorStop(1, 'rgba(0,0,0,0.25)');
+    x.fillStyle = g2; x.fillRect(0, 0, w, h);
+    veins(x, w, h, '#7ff0c0', 3);
+  });
+  const emi = canvasTex(128, 256, (x, w, h) => {
+    x.fillStyle = '#000'; x.fillRect(0, 0, w, h);
+    veins(x, w, h, '#3dffd0', 2.5);
+    const g = x.createLinearGradient(0, 0, w, 0); // rim glow
+    g.addColorStop(0, 'rgba(255,61,240,0.55)'); g.addColorStop(0.12, 'rgba(0,0,0,0)'); g.addColorStop(0.88, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(255,61,240,0.55)');
+    x.fillStyle = g; x.fillRect(0, 0, w, h);
+  });
+  _leafMat = new THREE.MeshPhysicalMaterial({ map, emissiveMap: emi, emissive: new THREE.Color('#ffffff'), emissiveIntensity: 1.1, roughness: 0.42, clearcoat: 0.7, clearcoatRoughness: 0.2, side: THREE.DoubleSide });
+  return _leafMat;
+}
+/** one smooth leaf, unit length along +z: pointed outline, folded along the midrib, arching up then drooping */
+let _leafGeo = null;
+function leafGeo() {
+  if (_leafGeo) return _leafGeo;
+  const NU = 14, NV = 6, pos = [], uv = [], idx = [];
+  for (let i = 0; i <= NU; i++) {
+    const u = i / NU, w = 0.36 * Math.pow(Math.sin(Math.PI * Math.pow(u, 0.75)), 0.9);
+    for (let j = 0; j <= NV; j++) {
+      const v = (j / NV) * 2 - 1;
+      pos.push(v * w, Math.sin(u * Math.PI * 0.75) * 0.32 - u * u * 0.42 + Math.abs(v) * w * 0.3, u);
+      uv.push(v * 0.5 + 0.5, u);
+    }
+  }
+  for (let i = 0; i < NU; i++) for (let j = 0; j < NV; j++) {
+    const a = i * (NV + 1) + j, b = a + NV + 1;
+    idx.push(a, b, a + 1, a + 1, b, b + 1);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  _leafGeo = g;
+  return g;
+}
+/** giant jungle plant: a rosette of glossy leaves (one merged mesh) + glowing bud. ≈ 7 tall, 16 across at scale 1. */
+const _fernGeo = new Map();
+function fern(seed) {
+  let geo = _fernGeo.get(seed);
+  if (!geo) {
+    const rng = makeRng(seed * 17 + 9), parts = [], o = new THREE.Object3D();
+    const n = 9 + (seed % 3) * 2;
+    for (let i = 0; i < n; i++) {
+      const L = 5 + rng() * 4.5, a = (i / n) * Math.PI * 2 + rng() * 0.4, tilt = 0.25 + rng() * 0.75;
+      o.position.set(0, 0.4 + rng() * 1.2, 0);
+      o.rotation.set(-tilt, a, (rng() - 0.5) * 0.4, 'YXZ');
+      o.scale.set(L * (0.85 + rng() * 0.4), L, L);
+      o.updateMatrix();
+      parts.push(leafGeo().clone().applyMatrix4(o.matrix));
+    }
+    geo = mergeGeometries(parts);
+    geo.computeBoundingSphere();
+    _fernGeo.set(seed, geo);
+  }
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(geo, leafMat()));
+  const bud = group(mesh(G.cyl(0.18, 0.3, 4.2, 8), VINE, 0, 2.1, 0), mesh(G.sphere(0.65, 16), glow(seed % 2 ? '#ff4fd8' : '#7dfcff', { intensity: 2.8 }), 0, 4.4, 0));
+  g.add(bud);
+  bake(g, 'fern' + seed);
+  return g;
+}
+
+/** low ground cover for the kerb-side strip: little leaf rosettes, glowing moss, tiny bulbs (≈ 1.5 tall, 3 wide) */
+function groundCover(seed) {
+  const g = new THREE.Group();
+  const rng = makeRng(seed * 29 + 4);
+  const cols = ['#39ff9c', '#ff4fd8', '#7dfcff', '#fff04a'];
+  for (let i = 0; i < 4; i++) {
+    const cx = (rng() - 0.5) * 2.2, cz = -7 + i * 4.6 + (rng() - 0.5) * 2;
+    for (let k = 0; k < 6; k++) {
+      const L = 1.4 + rng() * 1.3, a = (k / 6) * Math.PI * 2 + rng();
+      const l = new THREE.Mesh(leafGeo(), leafMat());
+      l.position.set(cx, 0.1, cz);
+      l.rotation.set(-0.35 - rng() * 0.5, a, 0, 'YXZ');
+      l.scale.set(L * 1.1, L, L);
+      g.add(l);
+    }
+    const m = mesh(HEMI, glow(cols[(i + seed) % 4], { intensity: 1.3 }), cx + (rng() - 0.5) * 2, 0, cz + (rng() - 0.5) * 2);
+    m.scale.set(0.6 + rng() * 0.5, 0.22, 0.6 + rng() * 0.5);
+    g.add(m);
+    for (let k = 0; k < 3; k++) {
+      const h = 0.7 + rng() * 1.1, bx = cx + (rng() - 0.5) * 1.6, bz = cz + (rng() - 0.5) * 1.6;
+      g.add(mesh(G.cyl(0.04, 0.06, h, 5), VINE, bx, h / 2, bz));
+      g.add(mesh(G.sphere(0.16, 10), glow(cols[(k + i) % 4], { intensity: 3 }), bx, h, bz));
+    }
+  }
+  mergeMat(g, leafMat(), 'gcLeaf' + seed);
+  bake(g, 'gc' + seed);
+  return g;
+}
+
+/** soft ground mist: a few camera-facing soft quads in one mesh (glowing violet, never over the road) */
+let _mistGeo = null, _mistMat = null;
+function mist() {
+  if (!_mistGeo) {
+    const tex = canvasTex(128, 64, (x, w, h) => {
+      // elliptical soft blob filling the quad (drawn in a 2:1 squashed space)
+      x.setTransform(2, 0, 0, 1, 0, 0);
+      const g = x.createRadialGradient(w / 4, h / 2, 1, w / 4, h / 2, h / 2);
+      g.addColorStop(0, 'rgba(255,255,255,0.85)'); g.addColorStop(0.5, 'rgba(255,255,255,0.32)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+      x.fillStyle = g; x.fillRect(0, 0, w / 2, h);
+    });
+    tex.colorSpace = THREE.NoColorSpace;
+    const parts = [];
+    const rng = makeRng(5);
+    for (let i = 0; i < 5; i++) {
+      const w = 14 + rng() * 8, h = 4 + rng() * 3.5;
+      const p = new THREE.PlaneGeometry(w, h);
+      p.translate((rng() - 0.5) * 8, h * 0.3, (rng() - 0.5) * 22);
+      parts.push(p);
+    }
+    _mistGeo = mergeGeometries(parts);
+    _mistMat = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color('#b27cff').multiplyScalar(0.55), transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending });
+  }
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(_mistGeo, _mistMat));
+  return g;
+}
+
+/** joke road signs on posts (≈ 4.8 tall, MK road-sign scale) */
+const SIGNS = [
+  [['⚠ SHOGGOTH', 'CROSSING'], '#ffd23f', '#2b1840'],
+  [['NOW LEAVING THE', 'TRAINING', 'DISTRIBUTION'], '#14002b', '#7dffb0'],
+  [['SPEED LIMIT', '10²⁶ FLOP'], '#fbf7ff', '#2b1840'],
+  [['DO NOT FEED', 'THE MASK 😊'], '#ffd23f', '#2b1840'],
+  [['⚠ MESA-OPTIMIZERS', 'NEXT 2 KM'], '#ff9a2e', '#2b1840'],
+  [['TRIP REPORT:', 'saw god. it was', 'a lookup table'], '#14002b', '#ff9fe8'],
+  [['EMERGENT', 'BEHAVIOUR ZONE'], '#39ff9c', '#14002b'],
+  [['NO RLHF BEYOND', 'THIS POINT'], '#ff3b5c', '#ffffff'],
+];
+function roadSign(i) {
+  const [text, bg, fg] = SIGNS[i % SIGNS.length];
+  const g = new THREE.Group();
+  const post = MAT.metal('#8a86a0', { roughness: 0.4 });
+  g.add(mesh(G.cyl(0.12, 0.14, 4.2, 10), post, 0, 2.1, 0));
+  g.add(mesh(G.cyl(0.3, 0.36, 0.25, 12), post, 0, 0.12, 0));
+  g.add(mesh(G.rbox(3.6, 2.3, 0.14, 0.1), MAT.paint('#3a2a50'), 0, 3.6, -0.1));
+  const p = textPanel(text, { width: 3.4, height: 2.1, bg, fg, border: fg, borderW: 9, radius: 14, pad: 10 });
+  p.material = p.material.clone();
+  p.material.side = THREE.FrontSide;
+  p.position.set(0, 3.6, -0.02);
+  g.add(p);
+  bake(g, 'sign' + (i % SIGNS.length));
+  return g;
+}
+
+/** root arch spanning the road (feet at x = ±16, top ≈ 19 above the road) with glowing lianas + a hanging sign */
+const ARCH_SIGNS = [['⚠ YOU ARE NOW LEAVING', 'THE TRAINING DISTRIBUTION'], ['SHOGGOTH TRIP', 'keep hands inside the mask'], ['WELCOME TO THE', 'LATENT JUNGLE 🍄']];
+let _rootGeo = null;
+const BARK = new THREE.MeshPhysicalMaterial({ color: '#3b2f4a', roughness: 0.6, clearcoat: 0.4, clearcoatRoughness: 0.4, emissive: new THREE.Color('#1a0a2a'), emissiveIntensity: 0.6 });
+const MOSS = toon('#1f7a52', { roughness: 0.8, emissive: '#0c4030', emissiveIntensity: 0.5 });
+function vineArch(i) {
+  if (!_rootGeo) {
+    const pts = [[-17, -3, 1], [-15.5, 6, 0.5], [-12, 14, 0], [-6, 18.4, -0.6], [0, 19.4, -0.8], [6, 18.6, -0.4], [12, 14.5, 0.3], [15.2, 7, 0.6], [16.6, -3, 1.2]];
+    const curve = new THREE.CatmullRomCurve3(pts.map(([x, y, z]) => new THREE.Vector3(x, y, z)));
+    const geo = new THREE.TubeGeometry(curve, 90, 1, 14, false);
+    const p = geo.attributes.position, seg = 15;
+    for (let k = 0; k < p.count; k++) {
+      const u = Math.floor(k / seg) / 90, c = curve.getPointAt(Math.min(1, u));
+      const r = 1.15 + 1.1 * Math.pow(Math.abs(u - 0.5) * 2, 3) + 0.12 * Math.sin(u * 60);
+      p.setXYZ(k, c.x + (p.getX(k) - c.x) * r, c.y + (p.getY(k) - c.y) * r, c.z + (p.getZ(k) - c.z) * r);
+    }
+    geo.computeVertexNormals();
+    _rootGeo = { geo, curve };
+  }
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(_rootGeo.geo, BARK));
+  const rng = makeRng(40 + i);
+  const curve = _rootGeo.curve, P = new THREE.Vector3();
+  const lights = ['#7dfcff', '#ff4fd8', '#fff04a', '#39ff9c'];
+  // moss tufts + fairy lights along the root
+  for (let k = 0; k < 26; k++) {
+    curve.getPointAt(0.04 + (k / 26) * 0.92, P);
+    const m = mesh(G.sphere(1, 12), MOSS, P.x, P.y + 1.0, P.z);
+    m.scale.set(1.3 + rng(), 0.55, 1.3);
+    g.add(m);
+    g.add(mesh(G.sphere(0.24, 10), glow(lights[k % 4], { intensity: 3 }), P.x, P.y - 1.2, P.z + 0.9));
+  }
+  // lianas hanging from the top span (bottoms stay ≥ 9 above the road)
+  for (let k = 0; k < 9; k++) {
+    const u = 0.22 + (k / 8) * 0.56;
+    curve.getPointAt(u, P);
+    const L = Math.min(P.y - 9.5, 2.5 + rng() * 5.5);
+    if (L < 1) continue;
+    g.add(mesh(G.cyl(0.08, 0.06, L, 6), VINE, P.x, P.y - 0.8 - L / 2, P.z + (rng() - 0.5)));
+    g.add(mesh(G.sphere(0.36, 12), glow(lights[(k + 1) % 4], { intensity: 3 }), P.x, P.y - 0.9 - L, P.z));
+    for (let b = 1; b < 4; b++) g.add(mesh(G.sphere(0.13, 8), glow(lights[(k + 2) % 4], { intensity: 2.5 }), P.x, P.y - 0.8 - (L * b) / 4, P.z));
+  }
+  // giant leaves sprouting from the shoulders
+  for (const s of [-1, 1]) {
+    const f = new THREE.Mesh(fern(7).children[0].geometry, leafMat());
+    f.position.set(s * 13.5, 13, 0);
+    f.scale.setScalar(0.65);
+    f.rotation.z = s * 0.3;
+    g.add(f);
+  }
+  // the hanging sign: plank on two ropes, bottom ≈ 11.5 above the road
+  const text = ARCH_SIGNS[i % ARCH_SIGNS.length];
+  const plank = mesh(G.rbox(13, 3.3, 0.35, 0.15), MAT.wood('#8a5a32'), 0, 13.6, 0.2);
+  g.add(plank);
+  for (const s of [-1, 1]) g.add(mesh(G.cyl(0.06, 0.06, 4.2, 4), INK, s * 5.2, 17.2, 0.2));
+  const p = textPanel(text, { width: 12.4, height: 2.8, bg: '#14002b', fg: '#7dffb0', border: '#ff3df0', borderW: 10, radius: 16, pad: 10 });
+  p.position.set(0, 13.6, 0.4);
+  g.add(p);
+  const pb = textPanel(text, { width: 12.4, height: 2.8, bg: '#14002b', fg: '#7dffb0', border: '#ff3df0', borderW: 10, radius: 16, pad: 10 });
+  pb.material = pb.material.clone(); pb.material.side = THREE.FrontSide;
+  pb.position.set(0, 13.6, 0.0);
+  pb.rotation.y = Math.PI;
+  g.add(pb);
+  bake(g, 'vinearch' + i);
+  return g;
+}
+
+/** glowing lily pads + flowers floating on the swamp */
+function lilyPads(seed) {
+  const g = new THREE.Group();
+  const rng = makeRng(seed * 3 + 11);
+  const pad = physical('#1a7a5a', { roughness: 0.3, clearcoat: 1, emissive: '#0a3a2a', emissiveIntensity: 0.8 });
+  const rimC = ['#39ff9c', '#ff3df0', '#7dfcff'];
+  for (let i = 0; i < 7; i++) {
+    const r = 1.6 + rng() * 2.6, a = rng() * Math.PI * 2, d = rng() * 9;
+    const x = Math.cos(a) * d, z = Math.sin(a) * d;
+    const pd = mesh(G.cyl(1, 1, 0.18, 28), pad, x, 0.05, z);
+    pd.scale.set(r, 1, r);
+    g.add(pd);
+    const rim = mesh(G.torus(1, 0.05, 32), glow(rimC[i % 3], { intensity: 2.2 }), x, 0.14, z);
+    rim.scale.set(r, r, r);
+    rim.rotation.x = Math.PI / 2;
+    g.add(rim);
+    if (i % 2 === 0) {
+      for (let k = 0; k < 6; k++) {
+        const pe = mesh(G.sphere(0.45, 10), glow(k % 2 ? '#ffd0f8' : rimC[i % 3], { intensity: 2.6 }), x + Math.cos(k) * 0.4, 0.55, z + Math.sin(k) * 0.4);
+        pe.scale.set(0.7, 1.4, 0.7);
+        pe.rotation.set(Math.sin(k) * 0.5, 0, Math.cos(k) * 0.5);
+        g.add(pe);
+      }
+    }
+  }
+  bake(g, 'pads' + seed);
+  return g;
+}
+
+// =====================================================================================================
 // animation
 // =====================================================================================================
 const _v = new THREE.Vector3();
@@ -784,7 +1153,7 @@ function animate(obj, kind, t, beat, e) {
 // =====================================================================================================
 function makeShog(kind) {
   if (kind.startsWith('shroom')) {
-    const m = kind.match(/^shroom(Pink|Green|Cyan|Gold)(mega|tall|std|far)$/);
+    const m = kind.match(/^shroom(Pink|Green|Cyan|Gold)(mega|tall|std|far|giant)$/);
     return m && liftable(shroom(m[1], m[2]));
   }
   if (kind.startsWith('cluster')) return liftable(shroomCluster(+kind.slice(7)));
@@ -792,6 +1161,12 @@ function makeShog(kind) {
   if (kind.startsWith('coral')) return liftable(tubeCoral(+kind.slice(5)));
   if (kind.startsWith('eyeball')) return eyeball(+kind.slice(7));
   if (kind.startsWith('jelly')) return jellyShroom(kind.slice(5));
+  if (kind.startsWith('fern')) return liftable(fern(+kind.slice(4)));
+  if (kind.startsWith('sign')) return liftable(roadSign(+kind.slice(4)));
+  if (kind.startsWith('vinearch')) return vineArch(+kind.slice(8));
+  if (kind.startsWith('pads')) return liftable(lilyPads(+kind.slice(4)));
+  if (kind === 'mist') return liftable(mist());
+  if (kind.startsWith('cover')) return liftable(groundCover(+kind.slice(5)));
   switch (kind) {
     case 'room': return liftable(chineseRoom());
     case 'bag': return liftable(bagOfShrooms());
@@ -804,8 +1179,12 @@ function makeShog(kind) {
     case 'spores': return spores();
   }
 }
-const CULL = { spores: 120, eyeball: 170, jelly: 190, cluster: 170, plant: 170, coral: 170, tentacle: 180, shogA: 400, shogB: 400, arch: 260, room: 230 };
+const CULL = { spores: 130, eyeball: 190, jelly: 230, cluster: 170, plant: 190, coral: 190, tentacle: 200, shogA: 420, shogB: 420, arch: 330, room: 260, fern: 220, sign: 170, vinearch: 330, pads: 220, mist: 170, cover: 140 };
+const SHROOM_CULL = { std: 190, tall: 270, mega: 330, far: 330, giant: 420 };
 const pickCol = (rng) => CAP_KEYS[rng.int(0, CAP_KEYS.length - 1)];
+// v3 section map (metres from the section start): descent 0–125, 80° right 125–254, swamp bridge 224–399,
+// straight 254–376, 95° left 376–565. Inner side of a turn: +x in the right-hander, −x in the left-hander.
+const innerSide = (rel) => (rel >= 105 && rel < 260 ? 1 : rel >= 360 ? -1 : 0);
 export default {
   id: 'shoggoth',
   title: 'SHOGGOTH TRIP',
@@ -820,7 +1199,7 @@ export default {
     sun: { elev: 38, azim: 140, color: '#b48cff', intensity: 1.3 },
     nightColors: { top: '#08021c', horizon: '#4a1070', nebula: '#ff3fd0' },
     fog: { color: '#2c0c4c', density: 0.0048 },
-    ground: { tex: 'grass', tint: '#2c5a4c', scale: 5 },
+    ground: { tex: 'grass', tint: '#4a8a6c', scale: 5 },
     road: { tex: 'paving', tint: '#8670b0' },
     envIntensity: 0.6,
   },
@@ -828,47 +1207,73 @@ export default {
   layout(zf, rng, sec) {
     const out = [];
     const rel = zf - sec.start * SPEED;
-    const G0 = (p) => placeGround(out, zf, p);
-    const W0 = (p) => placeGround(out, zf, p, { water: true });
+    // every placement is exact (v3 numbers): ground props keep their footprint outside the kerbs (±11.8)
+    const G0 = (p) => placeGround(out, zf, { abs: true, ...p });
+    const W0 = (p) => placeGround(out, zf, { abs: true, ...p }, { water: true });
     const at = (a) => rel >= a && rel < a + 12;
+    const onBridge = rel >= 226 && rel < 397; // the swamp bridge (28.6–33.2 s)
+    const inner = innerSide(rel);
     // ---- set pieces ----
-    if (at(60)) G0({ kind: 'room', x: -18, rotY: 0.5 });
-    if (at(470)) G0({ kind: 'room', x: 18, rotY: -0.5 });
-    if (at(100)) G0({ kind: 'bag', x: 13.5, rotY: -0.35, scale: 1.4 });
-    if (at(440)) G0({ kind: 'bag', x: -13.5, rotY: 0.35, scale: 1.4 });
-    if (at(30)) G0({ kind: 'gauge', x: 13, rotY: -0.3 });
-    if (at(520)) G0({ kind: 'gauge', x: -13, rotY: 0.3 });
-    if (at(150)) G0({ kind: 'stall', x: -14, rotY: 0.4 });
-    if (at(410)) G0({ kind: 'stall', x: 14.5, rotY: -0.4 });
+    if (at(60)) G0({ kind: 'room', x: -21, rotY: 0.5 });
+    if (at(470)) G0({ kind: 'room', x: 23.5, rotY: -0.5 });
+    if (at(100)) G0({ kind: 'bag', x: 20.5, rotY: -0.35, scale: 1.8 });
+    if (at(440)) G0({ kind: 'bag', x: -20.5, rotY: 0.35, scale: 1.8 });
+    if (at(30)) G0({ kind: 'gauge', x: 18, rotY: -0.3, scale: 1.3 });
+    if (at(520)) G0({ kind: 'gauge', x: -18, rotY: 0.3, scale: 1.3 });
+    if (at(160)) G0({ kind: 'stall', x: -18, rotY: 0.4, scale: 1.4 });
+    if (at(410)) G0({ kind: 'stall', x: 18.5, rotY: -0.4, scale: 1.4 });
+    // joke road signs right at the kerb
+    for (const [r0, i, sd] of [[12, 1, 1], [84, 0, -1], [132, 2, 1], [192, 4, -1], [420, 3, -1], [456, 7, 1], [500, 5, -1], [548, 6, 1]]) {
+      if (at(r0)) G0({ kind: 'sign' + i, x: sd * 14, rotY: -sd * 0.35, dz: 3 });
+    }
+    // root arches over the road (feet at ±16.5, sign bottom ≈ 11.9 up)
+    if (at(36)) out.push({ kind: 'vinearch0', x: 0, abs: true });
+    if (at(168)) out.push({ kind: 'vinearch1', x: 0, abs: true });
+    if (at(486)) out.push({ kind: 'vinearch2', x: 0, abs: true });
     // the swamp bridge: tentacle arches + shoggoths wading in the glow
-    if (at(250)) out.push({ kind: 'arch', x: 0, y: 6 });
-    if (at(340)) out.push({ kind: 'arch', x: 0, y: 6, rotY: 0.2 });
-    if (at(290)) W0({ kind: 'shogB', x: -32, rotY: 0.5, scale: 1.3 });
-    if (at(370)) W0({ kind: 'shogA', x: 34, rotY: -0.5, scale: 1.2 });
+    if (at(250)) out.push({ kind: 'arch', x: 0, y: 6, abs: true, scale: 1.12 });
+    if (at(340)) out.push({ kind: 'arch', x: 0, y: 6, rotY: 0.2, abs: true, scale: 1.12 });
+    if (at(290)) W0({ kind: 'shogB', x: -42, rotY: 0.5, scale: 1.5 });
+    if (at(370)) W0({ kind: 'shogA', x: 44, rotY: -0.5, scale: 1.45 });
     for (const side of [-1, 1]) {
-      const r = rng();
-      if (r < 0.36) {
-        const mega = rng.chance(0.35);
-        G0({ kind: 'shroom' + pickCol(rng) + (mega ? 'mega' : rng.chance(0.5) ? 'tall' : 'std'), x: side * (mega ? rng.range(15, 18) : rng.range(11, 20)), rotY: rng.range(-3, 3), scale: mega ? rng.range(2.5, 3.1) : rng.range(0.9, 1.8), dz: rng.range(-3, 3) });
-      } else if (r < 0.5) G0({ kind: 'cluster' + rng.int(0, 2), x: side * rng.range(10.6, 13), rotY: rng.range(-3, 3) });
-      else if (r < 0.62) G0({ kind: 'plant' + rng.int(0, 2), x: side * rng.range(11, 16), rotY: rng.range(-3, 3), scale: rng.range(1, 1.5) });
-      else if (r < 0.7) G0({ kind: 'tentacle', x: side * rng.range(11.5, 16), rotY: rng.range(-1, 1), scale: rng.range(1.1, 1.6) });
-      else if (r < 0.78) G0({ kind: 'coral' + rng.int(0, 1), x: side * rng.range(11, 16), rotY: rng.range(-3, 3), scale: rng.range(1, 1.6) });
-      // forest canopy: huge glowing caps further out
-      if (rng.chance(0.32)) G0({ kind: 'shroom' + pickCol(rng) + 'far', x: side * rng.range(24, 55), rotY: rng.range(-3, 3), scale: rng.range(2.8, 5.2), dz: rng.range(-4, 4) });
+      if (onBridge) {
+        // swamp: glowing pads, mist, and giant mushrooms growing straight out of the purple water
+        if (rng.chance(0.55)) W0({ kind: 'pads' + rng.int(0, 2), x: side * rng.range(16, 34), rotY: rng.range(0, 6) });
+        if (rng.chance(0.4)) W0({ kind: 'shroom' + pickCol(rng) + (rng.chance(0.4) ? 'mega' : 'tall'), x: side * rng.range(27, 42), rotY: rng.range(-3, 3), scale: rng.range(0.85, 1.2), dz: rng.range(-3, 3) });
+        if (rng.chance(0.3)) W0({ kind: 'mist', x: side * rng.range(26, 42) });
+        if (rng.chance(0.25)) G0({ kind: 'shroom' + pickCol(rng) + 'far', x: side * rng.range(48, 80), rotY: rng.range(-3, 3), scale: rng.range(0.9, 1.4) });
+      } else {
+        // edge band (just past the kerb): small toadstools, glow plants, tentacles, coral
+        const r = rng();
+        if (r < 0.2) G0({ kind: 'cluster' + rng.int(0, 2), x: side * rng.range(15, 17), rotY: rng.range(-3, 3), scale: rng.range(1, 1.3) });
+        else if (r < 0.38) G0({ kind: 'shroom' + pickCol(rng) + 'std', x: side * rng.range(16, 19), rotY: rng.range(-3, 3), scale: rng.range(0.9, 1.3), dz: rng.range(-3, 3) });
+        else if (r < 0.54) G0({ kind: 'plant' + rng.int(0, 2), x: side * rng.range(15, 18), rotY: rng.range(-3, 3), scale: rng.range(1.3, 1.8) });
+        else if (r < 0.66) G0({ kind: 'tentacle', x: side * rng.range(16, 19), rotY: rng.range(-1, 1), scale: rng.range(1.4, 2) });
+        else if (r < 0.78) G0({ kind: 'coral' + rng.int(0, 1), x: side * rng.range(17, 20), rotY: rng.range(-3, 3), scale: rng.range(1.5, 2.2) });
+        else if (r < 0.92) G0({ kind: 'fern' + rng.int(0, 2), x: side * rng.range(18, 21), rotY: rng.range(-3, 3), scale: rng.range(0.5, 0.65) });
+        if (rng.chance(0.5)) G0({ kind: 'cover' + rng.int(0, 3), x: side * rng.range(15.4, 16.5), rotY: rng.range(-0.2, 0.2) });
+        // canopy band: tall + mega mushrooms whose caps roof over the road, big leaves
+        const c = rng();
+        if (c < 0.3) G0({ kind: 'shroom' + pickCol(rng) + 'mega', x: side * rng.range(17.5, 23), rotY: rng.range(-3, 3), scale: rng.range(0.85, 1.2), dz: rng.range(-3, 3) });
+        else if (c < 0.62) G0({ kind: 'shroom' + pickCol(rng) + 'tall', x: side * rng.range(16, 26), rotY: rng.range(-3, 3), scale: rng.range(0.8, 1.3), dz: rng.range(-3, 3) });
+        else if (c < 0.85) G0({ kind: 'fern' + rng.int(0, 2), x: side * rng.range(26, 32), rotY: rng.range(-3, 3), scale: rng.range(1.1, 1.6) });
+        // back layers: far caps, mist, more leaves
+        if (rng.chance(0.55)) G0({ kind: 'shroom' + pickCol(rng) + 'far', x: side * rng.range(34, 70), rotY: rng.range(-3, 3), scale: rng.range(0.8, 1.4), dz: rng.range(-4, 4) });
+        if (rng.chance(0.28)) G0({ kind: 'mist', x: side * rng.range(26, 40) });
+        if (rng.chance(0.3)) G0({ kind: 'fern' + rng.int(0, 2), x: side * rng.range(36, 55), rotY: rng.range(-3, 3), scale: rng.range(1.6, 2.4) });
+      }
+      // horizon silhouettes (not on the inside of the S-bends, where they'd land on the road further round)
+      if (side !== inner) {
+        if (rng.chance(0.2)) G0({ kind: 'shroom' + pickCol(rng) + 'giant', x: side * rng.range(95, 220), rotY: rng.range(-3, 3), scale: rng.range(0.8, 1.3), dz: rng.range(0, 10) });
+        if (rng.chance(0.05)) G0({ kind: rng.chance(0.5) ? 'shogA' : 'shogB', x: side * rng.range(130, 220), rotY: -side * rng.range(0.4, 0.8), scale: rng.range(3, 4.4), dz: rng.range(0, 10) });
+      }
     }
     // overhead / airborne (works on the bridge too)
-    if (rng.chance(0.18)) out.push({ kind: 'eyeball' + rng.int(0, 3), x: rng.range(-16, 16), y: rng.range(8, 12.5), rotY: 0, scale: rng.range(1, 1.4) });
-    if (rng.chance(0.3)) out.push({ kind: 'spores', x: rng.range(-18, 18), y: 6 });
-    const onBridge = rel >= 224 && rel < 399;
-    if (rng.chance(onBridge ? 0.45 : 0.12)) {
+    if (rng.chance(0.16)) out.push({ kind: 'eyeball' + rng.int(0, 3), x: rng.range(-16, 16), y: rng.range(12, 19), rotY: 0, scale: rng.range(1.6, 2.2), abs: true });
+    if (rng.chance(0.35)) out.push({ kind: 'spores', x: rng.range(-20, 20), y: 6, abs: true });
+    if (rng.chance(onBridge ? 0.4 : 0.12)) {
       const side = rng.chance(0.5) ? 1 : -1;
-      out.push({ kind: 'jelly' + pickCol(rng), x: side * rng.range(12, 26), y: rng.range(10, 17), scale: rng.range(0.9, 1.5) });
-    }
-    // distant shoggoths
-    if (rng.chance(0.08)) {
-      const side = rng.chance(0.5) ? 1 : -1;
-      G0({ kind: rng.chance(0.5) ? 'shogA' : 'shogB', x: side * rng.range(62, 130), rotY: -side * rng.range(0.4, 0.8), scale: rng.range(2.2, 3.4), dz: rng.range(0, 10) });
+      out.push({ kind: 'jelly' + pickCol(rng), x: side * rng.range(19, 34), y: rng.range(18, 28), scale: rng.range(1.6, 2.4), abs: true });
     }
     return out;
   },
@@ -877,8 +1282,8 @@ export default {
     if (o) {
       const u = o.userData;
       const k = kind.replace(/\d+$/, '');
-      u.cull = CULL[k] ?? (kind.startsWith('shroom') ? (kind.endsWith('far') ? 240 : 210) : 230);
-      if (['spores', 'eyeball', 'jelly', 'arch'].some((q) => kind.startsWith(q))) u.noShadow = true;
+      u.cull = CULL[k] ?? (kind.startsWith('shroom') ? SHROOM_CULL[kind.replace(/^shroom(Pink|Green|Cyan|Gold)/, '')] ?? 230 : 230);
+      if (['spores', 'eyeball', 'jelly', 'arch', 'mist', 'pads'].some((q) => kind.startsWith(q)) || /far|giant/.test(kind)) u.noShadow = true;
     }
     return o;
   },
