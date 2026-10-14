@@ -115,6 +115,8 @@ export class Track {
     return this.course.frame(f0, _frG).y - (feat.type === 'bridge' ? 9 : 2);
   }
   /** terrain height (world y) at arc length s and lateral offset (yaw frame). null = no ground there */
+  /** distance from the centre line to the shore under a bridge: the sea crossing is an open bay (MK seas), the swamp stays narrow */
+  _shore(f) { return f.water === 'sea' ? 100 : 45; }
   terrainY(s, lat) {
     const m = this._mode(s);
     const f = this.course.frame(s, _frT);
@@ -122,8 +124,9 @@ export class Track {
     if (m.kind === 'none') return null;
     if (m.kind === 'water') {
       const base = this._groundBase(s, m.f.bridge);
-      if (Math.abs(lat) < 45) return null;
-      return base + 2 + this._hills(s, lat, look) + (Math.abs(lat) - 45) * 0.15;
+      const shore = this._shore(m.f);
+      if (Math.abs(lat) < shore) return null;
+      return base + 2 + this._hills(s, lat, look) + (Math.abs(lat) - shore) * 0.15;
     }
     if (m.kind === 'highway') return this._groundBase(s, m.f.highway) + this._hills(s, lat, look) * 0.6;
     if (m.cliff && Math.sign(lat) === m.cliff && Math.abs(lat) > H + 1) return f.y - 60;
@@ -264,8 +267,9 @@ export class Track {
             return side < 0 ? out.reverse() : out;
           }
           if (m.kind !== 'water') return null;
-          const out = [[side * 36, this._groundBase(s, m.f.bridge) - 1.5]];
-          for (const a of [45, 90, 160, 300]) { const lat = side * a; out.push([lat, this.terrainY(s, lat)]); }
+          const sh = this._shore(m.f);
+          const out = [[side * (sh - 9), this._groundBase(s, m.f.bridge) - 1.5]];
+          for (const a of [sh, sh + 45, sh + 115, sh + 255]) { const lat = side * a; out.push([lat, this.terrainY(s, lat)]); }
           return side < 0 ? out.reverse() : out;
         };
         this._sweep(sA, sB, 4, prof2, groundMat, { frame: 'level', name: 'shore', shadow: false, latAttr: true });
@@ -501,7 +505,7 @@ export class Track {
       minx = Math.min(minx, fr.x); maxx = Math.max(maxx, fr.x); minz = Math.min(minz, fr.z); maxz = Math.max(maxz, fr.z); miny = Math.min(miny, fr.y);
     }
     const span = Math.hypot(maxx - minx, maxz - minz);
-    const radius = f.type === 'cliff' ? span / 2 + 520 : span / 2 + 95;
+    const radius = f.type === 'cliff' ? span / 2 + 520 : span / 2 + this._shore(f) + 50;
     const y = f.type === 'cliff' ? miny - 48 : this._groundBase(sA, f) + 1;
     const nm = WATER() ? textureAt(WATER(), false) : null;
     const sea = f.water === 'sea';
@@ -540,7 +544,7 @@ export class Track {
     this.waters.push(plane);
     // shore foam: a soft band on the water just off the shoreline (terrain hides the half that is on land)
     if (f.type === 'cliff') this._foam(sA, sB, f.side, H + 3.5, H + 17, y, true);
-    else for (const side of [-1, 1]) this._foam(sA, sB, side, 33, 47, y, false);
+    else for (const side of [-1, 1]) this._foam(sA, sB, side, this._shore(f) - 12, this._shore(f) + 2, y, false);
   }
 
   _foam(sA, sB, side, latA, latB, y, inward) {

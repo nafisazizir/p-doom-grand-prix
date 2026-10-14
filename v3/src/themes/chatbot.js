@@ -1925,10 +1925,10 @@ export const sydney = {
       else if (k % 3 === 1) out.push({ kind: 'lampL' + ((k + 1) % 3), x: -12.2, y: 6, abs: true, dz: 7.5 });
     }
     // landmarks around the bay
-    if (k === 1) out.push({ kind: 'opera', x: -135, rotY: 0.55, scale: 1.25, dz: 120, abs: true });
-    if (k === 0) out.push({ kind: 'sydSign', x: 150, rotY: -0.6, scale: 3, dz: 150, abs: true });
-    if (k === 3) out.push({ kind: 'lighthouse', x: 54, rotY: -0.4, scale: 1.3, dz: 25, abs: true });
-    if (k === 6) out.push({ kind: 'cage', x: -78, rotY: 0.5, scale: 1.7, dz: 45, abs: true });
+    if (k === 1) out.push({ kind: 'opera', x: -150, rotY: 0.55, scale: 1.25, dz: 120, abs: true });
+    if (k === 0) out.push({ kind: 'sydSign', x: 190, rotY: -0.6, scale: 3, dz: 150, abs: true });
+    if (k === 3) out.push({ kind: 'lighthouse', x: 108, rotY: -0.4, scale: 1.3, dz: 25, abs: true });
+    if (k === 6) out.push({ kind: 'cage', x: -114, rotY: 0.5, scale: 1.7, dz: 45, abs: true });
     if (k === 9) out.push({ kind: 'airship', x: -40, y: 34, rotY: 0.3, scale: 1.3, abs: true });
     if (k === 0) out.push({ kind: 'airship', x: 46, y: 40, rotY: -0.3, scale: 1.4, dz: 40, abs: true });
     for (const side of [-1, 1]) {
@@ -1942,21 +1942,21 @@ export const sydney = {
       else if (r < 0.63) out.push({ kind: 'letter', x: side * rng.range(19, 26), y: rng.range(10, 14), rotY: -side * 0.3, scale: 0.95, abs: true });
       else if (r < 0.74) out.push({ kind: 'heartEyed', x: side * rng.range(19, 26), y: rng.range(9, 12), rotY: -side * 0.35, scale: 1.5, abs: true });
       // on the water: heart-sail yachts + buoys
-      if (rng.chance(0.28)) placeGround(out, zf, { kind: 'boat' + rng.int(0, 2), x: side * rng.range(22, 39), rotY: rng.range(-2.5, 2.5), dz: rng.range(-4, 4), abs: true }, { water: true });
+      if (rng.chance(0.28)) placeGround(out, zf, { kind: 'boat' + rng.int(0, 2), x: side * rng.range(24, 85), rotY: rng.range(-2.5, 2.5), dz: rng.range(-4, 4), abs: true }, { water: true });
       else if (rng.chance(0.15)) placeGround(out, zf, { kind: 'buoy', x: side * rng.range(16, 20), abs: true }, { water: true });
-      else if (rng.chance(0.3)) placeGround(out, zf, { kind: 'lanterns' + rng.int(0, 2), x: side * rng.range(20, 34), rotY: rng.range(-3, 3), abs: true }, { water: true });
+      else if (rng.chance(0.3)) placeGround(out, zf, { kind: 'lanterns' + rng.int(0, 2), x: side * rng.range(20, 70), rotY: rng.range(-3, 3), abs: true }, { water: true });
       // the shore: palms + a few giant roses near the water, the dusk-lit harbour city further back (keep the bay open)
-      if (rng.chance(0.45)) out.push({ kind: 'palm' + rng.int(0, 3), x: side * rng.range(50, 92), rotY: rng.range(-3, 3), scale: rng.range(0.9, 1.2), dz: rng.range(-4, 4), abs: true });
-      if (rng.chance(0.08)) out.push({ kind: 'roses', x: side * rng.range(52, 70), rotY: rng.range(-1, 1), scale: rng.range(2.0, 2.6), dz: rng.range(-4, 4), abs: true });
+      if (rng.chance(0.45)) out.push({ kind: 'palm' + rng.int(0, 3), x: side * rng.range(104, 140), rotY: rng.range(-3, 3), scale: rng.range(0.9, 1.2), dz: rng.range(-4, 4), abs: true });
+      if (rng.chance(0.08)) out.push({ kind: 'roses', x: side * rng.range(104, 118), rotY: rng.range(-1, 1), scale: rng.range(2.0, 2.6), dz: rng.range(-4, 4), abs: true });
       if (rng.chance(0.6)) {
         const far = (k + (side > 0 ? 1 : 0)) % 2;
         const v = far ? rng.int(4, 7) : rng.int(0, 3);
-        const ax = far ? rng.range(135, 175) : rng.range(104, 128);
+        const ax = far ? rng.range(185, 225) : rng.range(150, 175);
         const kind = rng.chance(0.3) ? 'cityS' + (far ? 1 : 0) + rng.int(0, SYD_SIGNS.length - 1) : 'city' + v;
         out.push({ kind, x: side * ax, rotY: rng.range(-0.3, 0.3), scale: rng.range(0.9, 1.3), dz: ax * rng.range(0, 0.45), abs: true });
       }
       if (rng.chance(0.35)) {
-        const ax = rng.range(140, 280);
+        const ax = rng.range(200, 330);
         out.push({ kind: 'tower' + rng.int(0, SYD_TOWERS.length - 1), x: side * ax, rotY: -side * rng.range(0.2, 0.6), scale: rng.range(2.2, 3.2), dz: ax * rng.range(0.5, 0.9), abs: true });
       }
     }
