@@ -66,3 +66,37 @@ Camera solve (`scratchpad camsolve.py`): pinhole with horizon, contact y and kar
 | Theme agents (×5) | themes/*.js | Re-scale every prop to the MK object table, widen spanning props to the v3 road, denser trackside detail, bigger skylines, smoother geometry |
 
 The brief for all agents is `tools/V3_BRIEF.md`.
+
+## Outcome (2026-10-14)
+
+- **Frame matches MK.** In section 1 v3 measures a kart 220 px wide, the wheels at y=679 and the horizon at y=239. Road width is 10.4 kart widths across every section, and boost widens the FOV the way MK does.
+- **Every theme was re-scaled against the MK object table** with `__dbg.propSizes()`:
+  - Lamps 10–11.
+  - Houses 10–15, palms 12–20.
+  - Arches and gantries 14–18, with posts outside ±13.
+  - Skylines and landmarks 60–320.
+  - Stands 30, floodlights 50.
+- **Atmosphere:**
+  - Gradient skies with lit cumulus.
+  - Haze that washes distance to the theme colour.
+  - Far ridges.
+  - The MK grade, plus a radial speed blur on boost.
+  - Crisp shadows sized to the small kart.
+  - Road wear detail.
+- **Effects:**
+  - Soft instanced sprite particles (glow, sparkle, streak, shard).
+  - Shader flames and drift sparks.
+  - Contact shadows.
+  - Rivals on the hero chassis.
+  - Glossy halos and GPUs, iridescent item-box power-ups, and the 15 hazards rebuilt at kart height.
+- **Smoothness:**
+  - Props are prewarmed in idle time, with shaders compiled async.
+  - Emoji glyphs are rasterized at boot.
+  - Worst frame over a full autopilot run went from 183 ms to 67 ms (that one is the glide start).
+  - Headless runs hold 60 fps.
+  - Draw calls are 1000–2300 including shadow and AO passes, about v2 ±10%.
+- **QA fixes:**
+  - The desert is hidden while still on the rainbow road.
+  - The clifftop sea reads blue, with the sea side kept clear past the cliff.
+  - The Sydney crossing is an open bay (shore 45 → 100).
+  - `model()` keeps its size when spawned.
