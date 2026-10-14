@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { toon, glow, G, mesh, billboard, textPanel, makeRng, hashSeed, clamp, smooth, MAT } from './toolkit.js';
 import { getTheme } from './themes/index.js';
-import { Course, SPEED, ROAD_HALF, LANE } from './course.js';
+import { Course, SPEED, ROAD_HALF, LANE, V2_ROAD_HALF } from './course.js';
 import { lookFor } from './looks.js';
 import { surface, WATER, textureAt, cloneTex } from './textures.js';
 
@@ -601,7 +601,9 @@ export class Track {
 
   _spawn(th, p, zf) {
     const C = this.course;
-    const lat = p.x || 0;
+    let lat = p.x || 0;
+    // v2 layouts assumed a ±9 road: props beside the road move out with the wider v3 road (p.abs opts out)
+    if (!p.abs && Math.abs(lat) > V2_ROAD_HALF + 0.2) lat += Math.sign(lat) * (H - V2_ROAD_HALF);
     const feats = C.featuresAt(zf);
     const overhead = (p.y || 0) >= 6;
     const isBB = p.kind.startsWith('__bb:');

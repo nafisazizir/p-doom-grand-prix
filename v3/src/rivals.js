@@ -1,6 +1,7 @@
 // Cosmetic rival karts (no collisions, no scoring): parody labs racing alongside you, with taunts.
 import * as THREE from 'three';
 import { toon, glow, G, mesh, MAT, textTexture } from './toolkit.js';
+import { RIVAL_SCALE as RS } from './scale.js';
 
 const RIVALS = [
   {
@@ -21,13 +22,13 @@ const RIVALS = [
   },
 ];
 
-const GAP = 0.62; // min lateral centre-to-centre gap (normalized ≈ 4.3 m) when a rival overlaps the player lengthwise
+const GAP = 0.42; // min lateral centre-to-centre gap (normalized ≈ 2.9 m ≈ 1.7 kart widths) when a rival overlaps the player lengthwise
 const MAXX = 1.3; // rivals may use the kerb when squeezed
 
 function bubbleSprite(text, color) {
   const tex = textTexture(text, { w: 512, h: 128, bg: '#ffffff', fg: '#2b1840', border: color, borderW: 10, radius: 40, pad: 22 });
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-  s.scale.set(3.2, 0.8, 1);
+  s.scale.set(2.8 / RS, 0.7 / RS, 1); // world size stays readable on the scaled-down rival
   return s;
 }
 
@@ -91,11 +92,12 @@ function buildRival(def) {
   }
   // nameplate
   const plate = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTexture(def.name, { w: 512, h: 128, bg: def.color, fg: '#ffffff', border: '#2b1840', borderW: 10, radius: 50, stroke: '#2b1840', strokeW: 8 }), depthWrite: false, transparent: true }));
-  plate.scale.set(2.0, 0.5, 1);
-  plate.position.set(0, 3.3, 0);
+  plate.scale.set(1.5 / RS, 0.375 / RS, 1);
+  plate.position.set(0, 3.5, 0);
   g.add(plate);
   g.traverse((o) => { if (o.isMesh && !o.material.transparent && !o.material.isMeshBasicMaterial) o.castShadow = true; });
   g.userData.body = body;
+  g.scale.setScalar(RS);
   return g;
 }
 
@@ -148,23 +150,23 @@ export class Rivals {
         if (!r.side) r.side = r.shown ? (r.x >= kartX ? 1 : -1) : far;
         if (r.side !== far && off > 7 && room(far)) r.side = far;
         if (!room(r.side) && off > 7) r.side = -r.side;
-        target = r.side < 0 ? Math.min(target, kartX - 0.95, -0.55) : Math.max(target, kartX + 0.95, 0.55);
+        target = r.side < 0 ? Math.min(target, kartX - 0.6, -0.4) : Math.max(target, kartX + 0.6, 0.4);
       } else r.side = 0;
       target = Math.max(-0.9, Math.min(0.9, target));
       if (show && !r.shown) r.x = target; // just appeared: start in its lane, never on top of the player
       r.x += (target - r.x) * (1 - Math.exp(-dt * 2.5));
       // hard rule: when overlapping lengthwise, keep a clear lateral gap (squeezed against the edge → skip a frame)
-      if (Math.abs(off) < 6 && r.side) {
+      if (Math.abs(off) < 3.5 && r.side) {
         r.x = r.side > 0 ? Math.max(r.x, kartX + GAP) : Math.min(r.x, kartX - GAP);
         // squeezed against the edge: hug the kerb and dash ahead out of the way (no popping, no driving through you)
         if (Math.abs(r.x) > MAXX) { r.x = Math.sign(r.x) * MAXX; r.offAdj += dt * 22; }
       } else r.offAdj *= Math.exp(-dt * 0.25);
       // and don't stack on another rival
       if (show) for (const o of placed) {
-        if (Math.abs(o.off - off) < 5 && Math.abs(o.x - r.x) < 0.5) {
+        if (Math.abs(o.off - off) < 3.5 && Math.abs(o.x - r.x) < 0.36) {
           const dir = r.side || (r.x >= o.x ? 1 : -1);
-          const nx = o.x + dir * 0.5;
-          if (Math.abs(nx) <= MAXX && !(Math.abs(off) < 6 && Math.abs(nx - kartX) < GAP)) r.x = nx;
+          const nx = o.x + dir * 0.36;
+          if (Math.abs(nx) <= MAXX && !(Math.abs(off) < 3.5 && Math.abs(nx - kartX) < GAP)) r.x = nx;
         }
       }
       r.obj.visible = show;

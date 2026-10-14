@@ -9,11 +9,11 @@
 import { THREE, toon, glow, G, mesh, textTexture, roundRect, MAT, FONT, makeRng, clamp } from '../toolkit.js';
 import { surface } from '../textures.js';
 import { model } from '../models.js';
-import { Course, SPEED } from '../course.js';
+import { Course, SPEED, ROAD_HALF } from '../course.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const SPACING = 10;
-const H = 9; // road half width (course.js ROAD_HALF)
+const H = ROAD_HALF; // road half width
 const INK = '#1d1626';
 const SIGN_Y = '#ffcc2e';
 const HWY = '#17693c';

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { toon, glow, G, mesh, roundRect, clamp, lerp, MAT, physical, textPanel } from './toolkit.js';
 import { glowSprite } from './entities.js';
 import { surface } from './textures.js';
+import { KART_SCALE } from './scale.js';
 
 // a smooth tapered kart body from an extruded, bevelled side profile
 function kartShell() {
@@ -31,6 +32,7 @@ export class Kart {
     this.expr = 'normal';
     this.blinkT = 2;
     this.blinking = false;
+    this.topY = 3.38; // top of the spark driver (kart local), for frame measurements
     this.yaw = 0; this.lean = 0; this.spin = 0; this.scaleK = 1; this.flameK = 0; this.gliderK = 0;
     this._build();
     this.root.traverse((o) => { if (o.isMesh && !o.material.transparent && !o.material.isMeshBasicMaterial) { o.castShadow = true; o.receiveShadow = true; } });
@@ -178,7 +180,8 @@ export class Kart {
     this.mascot = m;
     const clay = MAT.paint('#d97757', { roughness: 0.62, clearcoat: 0.25, clearcoatRoughness: 0.5, metalness: 0 });
     const spark = new THREE.Group();
-    spark.position.set(0, 1.55, 0);
+    spark.position.set(0, 1.62, 0);
+    spark.scale.setScalar(0.84); // v3: MK drivers are about half a kart wide; keep the height (kart+driver ≈ 1.1 kart widths)
     m.add(spark);
     this.spark = spark;
     spark.add(mesh(G.sphere(0.5, 28), clay)); // hub
@@ -323,7 +326,7 @@ export class Kart {
     this.body.position.y = s.boostK * 0.12 + (s.spinT > 0 ? Math.abs(Math.sin(s.t * 20)) * 0.3 : 0);
     const sq = Math.pow(1 - s.beatPhase, 4) * 0.05;
     this.scaleK = lerp(this.scaleK, s.scaleK, 1 - Math.exp(-dt * 6));
-    const k = this.scaleK;
+    const k = this.scaleK * KART_SCALE;
     this.root.scale.set(k * (1 + sq), k * (1 - sq), k * (1 + sq));
     this.mascot.position.y = 0.62 + Math.sin(s.t * 9) * 0.03;
     // Claude always turns to look at you (the spark reads best face-on), with a little lean

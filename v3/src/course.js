@@ -3,23 +3,28 @@
 import * as THREE from 'three';
 
 export const SPEED = 38; // world units per song second
-export const ROAD_HALF = 9;
-export const LANE = 7; // normalized x ∈ [-1,1] → ±LANE world units
+// v3: road widened 18 → 21 (≈ 12.4 kart widths at the v3 kart scale; MK normal roads measure 10–11, circuits ~20)
+export const ROAD_HALF = 10.5;
+export const LANE = 8.2; // normalized x ∈ [-1,1] → ±LANE world units
+export const V2_ROAD_HALF = 9; // theme layouts written for v2 use this; track._spawn shifts their side props outwards
 
 // Pieces cover song time contiguously. turn: degrees over the piece (+ right, − left). rise: metres over the piece.
 // ease: 'smooth' (default) or 'exp' for the final takeoff.
 export const PIECES = [
   { t: [-4, 5] },
-  { t: [5, 9], turn: 35 },
-  { t: [9, 12], rise: -3 },
-  { t: [12, 17.14], turn: -40 },
+  // v3: MK-style corners (MK medium corners ≈ 30–60 kart widths radius, hairpins ≈ 10–15)
+  { t: [5, 7.4], turn: 70 },
+  { t: [7.4, 9.2] },
+  { t: [9.2, 12], rise: -3, turn: -25 },
+  { t: [12, 15.2], turn: -70 },
+  { t: [15.2, 17.14] },
   // chatbot: climb onto an elevated highway
   { t: [17.14, 22.71], turn: -25, rise: 16 },
   // shoggoth: dive into the mushroom jungle, S-bends, swamp bridge
   { t: [22.71, 26], rise: -9 },
-  { t: [26, 29.4], turn: 60 },
+  { t: [26, 29.4], turn: 80 },
   { t: [29.4, 32.6] },
-  { t: [32.6, 37.57], turn: -70, rise: -7 },
+  { t: [32.6, 37.57], turn: -95, rise: -7 },
   // data centre tunnel
   { t: [37.57, 46], turn: -90 },
   { t: [46, 52], turn: 60 },
@@ -34,13 +39,16 @@ export const PIECES = [
   { t: [73.7, 77.5], rise: -86, ease: 'glide' },
   // badlands: the SHARP LEFT TURN lands on the lyric (80.98 s)
   { t: [77.5, 80.4] },
-  { t: [80.4, 83.3], turn: -155 },
-  { t: [83.3, 88.49], turn: 20, rise: 6 },
+  { t: [80.4, 83.3], turn: -175 },
+  { t: [83.3, 85.8], turn: 45, rise: 3 },
+  { t: [85.8, 88.49], turn: -25, rise: 3 },
   // gato: cliff edge over the ocean at sunset
   { t: [88.49, 95.76], turn: 45 },
   // paperclip factory
-  { t: [95.76, 103], turn: -45 },
-  { t: [103, 110.32], turn: 45 },
+  { t: [95.76, 99.4], turn: -60 },
+  { t: [99.4, 103], turn: 50 },
+  { t: [103, 106.6], turn: 55 },
+  { t: [106.6, 110.32], turn: -40 },
   // data centre on fire: descending helix
   { t: [110.32, 124.85], turn: 200, rise: -18 },
   // stadium: banked oval + a hop over the leak pool
@@ -141,12 +149,12 @@ export class Course {
       x += Math.sin(yaw) * DS;
       z += -Math.cos(yaw) * DS;
       yaw += sm[i] * DS;
-      this.bank[i] = Math.max(-0.32, Math.min(0.32, sm[i] * BANK_K * 4.5));
+      this.bank[i] = Math.max(-0.2, Math.min(0.2, sm[i] * BANK_K * 3.2)); // v3: gentler (MK roads are mostly flat; the stadium banks hard)
     }
     // stadium: steeper banking
     for (const f of this.features) {
       if (f.type !== 'stadium') continue;
-      for (let i = this._idx(f.s[0]); i <= this._idx(f.s[1]); i++) this.bank[i] = Math.max(-0.42, Math.min(0.42, this.bank[i] * 1.6));
+      for (let i = this._idx(f.s[0]); i <= this._idx(f.s[1]); i++) this.bank[i] = Math.max(-0.42, Math.min(0.42, this.bank[i] * 2.4));
     }
     // jumps/glides don't bank
     for (const f of this.features) {

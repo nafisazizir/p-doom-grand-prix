@@ -7,7 +7,7 @@ import { Rivals } from './rivals.js';
 import { audio, sfx, setKey } from '../../src/audio.js';
 import { clock } from '../../src/clock.js';
 import { loadData, buildLevel, sectionAt } from '../../src/beatmap.js';
-import { Track, SPEED, LANE } from './track.js';
+import { Track, SPEED, LANE, ROAD_HALF } from './track.js';
 import { Kart } from './kart.js';
 import { Entities, POWER_NAMES, POWER_DESC } from './entities.js';
 import { Particles, Smoke } from './particles.js';
@@ -18,6 +18,7 @@ import { HAZARDS } from './hazards.js';
 import { THEMES, getTheme } from './themes/index.js';
 import { debug } from '../../src/debug.js';
 import { clamp, lerp } from './toolkit.js';
+import { CAMERA, KART_W, KART_SCALE } from './scale.js';
 
 // ---------------- tuning ----------------
 // P(doom) = sigmoid(doomX). doomX starts at 0 (= 0.50) and is unbounded, so the meter eases towards 0/1.
@@ -99,7 +100,7 @@ async function boot() {
   track = new Track(scene, sections, R);
   kart = new Kart(scene);
   rivals = new Rivals(scene, track);
-  globalThis.__dbg = { get camera() { return camera; }, get kart() { return kart; }, get track() { return track; }, get rivals() { return rivals; }, CAM };
+  globalThis.__dbg = { get camera() { return camera; }, get kart() { return kart; }, get track() { return track; }, get rivals() { return rivals; }, CAM, measure };
   particles = new Particles(scene);
   smoke = new Smoke(scene);
   level = v2Level(buildLevel(bm, structuredClone(sections), THEMES));
@@ -877,7 +878,7 @@ function frame(now) {
 
   // trails
   if (mode === 'RACE' && !paused) {
-    const back = track.worldPos(kartZ - 1.5, G.kartX, 0.7, tmpV);
+    const back = track.worldPos(kartZ - 1.5 * KART_SCALE, G.kartX, 0.7 * KART_SCALE, tmpV);
     const TT = track.course.frame(kartZ, frameTmp2);
     if (G.combo >= 25) {
       const hue = (now / 6) % 360;
@@ -896,14 +897,14 @@ function frame(now) {
     const air = !!feats.jump || G.launched;
     // tyre dust only when steering hard: small, warm and faint (the outer rear wheel kicks it up)
     if (!air && Math.abs(G.kartVel) > 2.2 && Math.abs(G.steer) > 0.6 && Math.random() < 0.45) {
-      const sx = G.kartVel > 0 ? -1.3 : 1.3;
-      const wp = track.worldPos(kartZ - 1.4, G.kartX + sx / LANE, 0.25, tmpV);
+      const sx = (G.kartVel > 0 ? -1.3 : 1.3) * KART_SCALE;
+      const wp = track.worldPos(kartZ - 1.4 * KART_SCALE, G.kartX + sx / LANE, 0.15, tmpV);
       smoke.spawn(wp, { x: (Math.random() - 0.5) * 1.2, y: 0.5 + Math.random() * 0.6, z: (Math.random() - 0.5) * 1.2 }, '#f3dcc0', { life: 0.5, size: 0.45, grow: 1.4, alpha: 0.13 });
     }
     if (G.wasAir && !air) {
       // compact touchdown puffs at the rear wheels
-      for (const sx of [-1.3, 1.3]) {
-        const wp = track.worldPos(kartZ + 0.5, G.kartX + sx / LANE, 0.3, tmpV);
+      for (const sx of [-1.3 * KART_SCALE, 1.3 * KART_SCALE]) {
+        const wp = track.worldPos(kartZ + 0.5 * KART_SCALE, G.kartX + sx / LANE, 0.2, tmpV);
         smoke.puff(wp, '#f0e6d8', 7, { speed: 4, size: 1.0, grow: 2.2, alpha: 0.4, life: 0.7, up: 1 });
       }
       camState.shake = Math.max(camState.shake, 0.6);
@@ -959,19 +960,45 @@ function beatPhaseAt(t) {
   return clamp((t - b0) / (b1 - b0), 0, 1);
 }
 
-// chase camera rig (tunable for experiments: ?cam=back,height,ahead,aheadH,fov,latFollow)
-const CAM = { back: 9.8, height: 4.6, ahead: 28, aheadH: 3, fov: 60, lat: 0.75 };
+/** Frame metrics in the same terms as the Mario Kart stills (1456×819 px): __dbg.measure() in the console / CDP. */
+function measure() {
+  const W = 1456, Hh = 819, v = new THREE.Vector3();
+  const px = (p) => { v.copy(p).project(camera); return [(v.x + 1) / 2 * W, (1 - v.y) / 2 * Hh]; };
+  const k = kart.root;
+  k.updateMatrixWorld(true);
+  const wheelOut = 1.69; // rear tyre outer edge (kart model units)
+  const L = px(new THREE.Vector3(-wheelOut, 0, 1.1).applyMatrix4(k.matrixWorld));
+  const Rr = px(new THREE.Vector3(wheelOut, 0, 1.1).applyMatrix4(k.matrixWorld));
+  const head = px(new THREE.Vector3(0, kart.topY ?? 3.5, 0.2).applyMatrix4(k.matrixWorld));
+  const fwd = new THREE.Vector3();
+  camera.getWorldDirection(fwd);
+  fwd.y = 0; fwd.normalize();
+  const hz = px(camera.position.clone().addScaledVector(fwd, 1e5));
+  const kartW = Math.hypot(Rr[0] - L[0], Rr[1] - L[1]);
+  const kz = G.songTime * SPEED + 1.1 * k.scale.z;
+  const eL = px(track.worldPos(kz, -ROAD_HALF / LANE, 0));
+  const eR = px(track.worldPos(kz, ROAD_HALF / LANE, 0));
+  const r = (x) => Math.round(x * 10) / 10;
+  return {
+    kartWidthPx: r(kartW), wheelContactY: r((L[1] + Rr[1]) / 2), headTopY: r(head[1]), kartHeightPx: r((L[1] + Rr[1]) / 2 - head[1]),
+    kartCenterX: r((L[0] + Rr[0]) / 2), horizonY: r(hz[1]), roadWidthPx: r(eR[0] - eL[0]), roadKartWidths: r((eR[0] - eL[0]) / kartW),
+    fov: camera.fov, camHeight: r(camera.position.y - k.position.y),
+  };
+}
+
+// chase camera rig, measured from Mario Kart World (scale.js). Tunable: ?cam=back,height,ahead,pitch,fov,latFollow
+const CAM = { ...CAMERA };
 if (params.get('cam')) {
   const v = params.get('cam').split(',').map(Number);
-  ['back', 'height', 'ahead', 'aheadH', 'fov', 'lat'].forEach((k, i) => { if (!isNaN(v[i])) CAM[k] = v[i]; });
+  ['back', 'height', 'ahead', 'pitch', 'fov', 'lat'].forEach((k, i) => { if (!isNaN(v[i])) CAM[k] = v[i]; });
 }
 // ---------------- photo mode (while paused): drag to orbit, scroll to zoom ----------------
-const photo = { yaw: 0, pitch: 0.32, dist: 11, drag: null };
+const photo = { yaw: 0, pitch: 0.32, dist: 6, drag: null };
 function startPhoto() {
   document.body.classList.add('photo');
   const k = kart.root.position;
   const d = camera.position.clone().sub(k);
-  photo.dist = Math.max(4, d.length());
+  photo.dist = Math.max(2, d.length());
   photo.pitch = Math.asin(Math.min(0.99, Math.max(-0.2, d.y / photo.dist)));
   photo.yaw = Math.atan2(d.x, d.z);
 }
@@ -985,7 +1012,7 @@ function startPhoto() {
     photo.drag = { x: e.clientX, y: e.clientY };
   });
   cv.addEventListener('pointerup', () => { photo.drag = null; });
-  cv.addEventListener('wheel', (e) => { if (paused) { e.preventDefault(); photo.dist = Math.min(80, Math.max(3, photo.dist * Math.exp(e.deltaY * 0.001))); } }, { passive: false });
+  cv.addEventListener('wheel', (e) => { if (paused) { e.preventDefault(); photo.dist = Math.min(80, Math.max(1.5, photo.dist * Math.exp(e.deltaY * 0.001))); } }, { passive: false });
 })();
 
 const camTarget = new THREE.Vector3();
@@ -996,9 +1023,9 @@ function updateCamera(dt, kartZ, t, boostK, now) {
   if (mode === 'TITLE' || mode === 'LOADING') {
     const a = now / 5000;
     const p = track.worldPos(0, 0, 0, new THREE.Vector3());
-    camera.position.set(p.x + Math.sin(a) * 6.5, p.y + 2.6, p.z + Math.cos(a) * 6.5);
+    camera.position.set(p.x + Math.sin(a) * 3.6, p.y + 1.4, p.z + Math.cos(a) * 3.6);
     camera.up.set(0, 1, 0);
-    camera.lookAt(p.x, p.y + 1.2, p.z);
+    camera.lookAt(p.x, p.y + 0.7, p.z);
     camera.fov = 50;
     camera.updateProjectionMatrix();
     return;
@@ -1007,11 +1034,11 @@ function updateCamera(dt, kartZ, t, boostK, now) {
     const k = kart.root.position;
     camera.position.set(
       k.x + Math.sin(photo.yaw) * Math.cos(photo.pitch) * photo.dist,
-      k.y + 1 + Math.sin(photo.pitch) * photo.dist,
+      k.y + 0.5 + Math.sin(photo.pitch) * photo.dist,
       k.z + Math.cos(photo.yaw) * Math.cos(photo.pitch) * photo.dist,
     );
     camera.up.set(0, 1, 0);
-    camera.lookAt(k.x, k.y + 1.2, k.z);
+    camera.lookAt(k.x, k.y + 0.6, k.z);
     camState.snap = true; // resume snaps back to the chase cam
     return;
   }
@@ -1026,23 +1053,26 @@ function updateCamera(dt, kartZ, t, boostK, now) {
   camState.gw = camState.snap ? gw : lerp(camState.gw || 0, gw, 1 - Math.exp(-dt * 2.5));
   const gwk = camState.gw;
   const hop = track.course.hopAt(kartZ);
-  const back = CAM.back + 2 * boostK + 7 * gwk;
-  const height = CAM.height - 0.6 * boostK + 4 * gwk;
+  const back = CAM.back + CAM.boostBack * boostK + 5 * gwk;
+  const height = CAM.height + 2.2 * KART_W * gwk;
   const f = track.course.frame(kartZ - back, camFr);
-  // camera sits behind, following the kart laterally with a little lag; up is half road-normal, half world-up
+  // camera sits behind, following the kart laterally with a little lag; up is mostly road-normal (MK follows the road plane)
   const latTarget = G.kartX * LANE * CAM.lat;
   camState.x = THREE.MathUtils.lerp(camState.x, latTarget, 1 - Math.exp(-dt * 6));
-  camUp.set(f.ux * 0.4, f.uy * 0.4 + 0.6, f.uz * 0.4).normalize();
-  camPosT.set(f.x + f.rx * camState.x, f.y + f.ry * camState.x, f.z + f.rz * camState.x).addScaledVector(camUp, height + hop);
-  // ease the camera so jumps/glides feel floaty
-  if (!camState.init || camState.snap) { camera.position.copy(camPosT); camState.init = true; camState.snap = false; }
-  else camera.position.lerp(camPosT, 1 - Math.exp(-dt * 14));
+  // vertical offset (hops, glides) eases so jumps feel floaty; no positional lag along the track (that used to add ~2.7 m)
+  const hTarget = height + hop;
+  camState.h = camState.snap || camState.h === undefined ? hTarget : lerp(camState.h, hTarget, 1 - Math.exp(-dt * 7));
+  camUp.set(f.ux * 0.7, f.uy * 0.7 + 0.3, f.uz * 0.7).normalize();
+  camPosT.set(f.x + f.rx * camState.x, f.y + f.ry * camState.x, f.z + f.rz * camState.x).addScaledVector(camUp, camState.h);
+  if (!camState.init || camState.snap) { camState.init = true; camState.snap = false; }
+  camera.position.copy(camPosT);
   camState.shake *= Math.exp(-dt * 6);
-  const sh = camState.shake;
+  const sh = camState.shake * KART_W * 0.4;
   camera.position.x += (Math.random() - 0.5) * sh * 0.6;
   camera.position.y += (Math.random() - 0.5) * sh * 0.4;
-  // aim ahead at the kart's own hop height (not the hop curve 28 m ahead, which tips the camera down mid-air)
-  track.course.pos(kartZ + CAM.ahead, G.kartX * 0.5, CAM.aheadH + hop * 0.7, camTarget);
+  // aim ahead along the track, below the road, so the view pitches down CAM.pitch degrees (MK: horizon at ~29% from the top)
+  const aimDrop = Math.tan(THREE.MathUtils.degToRad(CAM.pitch)) * (back + CAM.ahead);
+  track.course.pos(kartZ + CAM.ahead, G.kartX * 0.5, camState.h - aimDrop + hop * 0.7, camTarget);
   if (gwk > 0.001 && camState.landZ) camTarget.lerp(track.course.pos(camState.landZ + 18, G.kartX * 0.3, 0, camLand), 0.62 * gwk);
   if (G.launched) {
     const k = Math.min(1, (t - G.launchT) / 1.5);
@@ -1050,7 +1080,7 @@ function updateCamera(dt, kartZ, t, boostK, now) {
   }
   camera.up.copy(camUp);
   camera.lookAt(camTarget);
-  const fov = CAM.fov + 14 * boostK;
+  const fov = CAM.fov + CAM.boostFov * boostK;
   if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
 }
 

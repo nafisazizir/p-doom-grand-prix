@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { toon, glow, G, mesh, group, textPanel, textTexture } from './toolkit.js';
 import { SPEED, FAR, LANE } from './track.js';
 import { makeHazard, BASE } from './hazards.js';
+import { ITEM } from './scale.js';
+const GS = ITEM.gpuScale, RK = ITEM.ringR / 3.0, PS = ITEM.powerScale;
 
 let glowTex = null;
 const _fy = {};
@@ -52,10 +54,10 @@ export function makeGPU() {
   // lane marker on the road under the chip, so you can read where it is
   const disc = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.95, 28), new THREE.MeshBasicMaterial({ color: new THREE.Color('#7cffb0').multiplyScalar(1.4), transparent: true, opacity: 0.55, depthWrite: false }));
   disc.rotation.x = -Math.PI / 2;
-  disc.position.y = -0.84; // ×1.3 group scale ≈ just above the road
+  disc.position.y = -ITEM.gpuY / GS + 0.05; // just above the road
   g.add(disc);
   g.userData.disc = disc;
-  g.scale.setScalar(1.3);
+  g.scale.setScalar(GS);
   return g;
 }
 
@@ -130,10 +132,10 @@ export class Entities {
     this.pools = new Map();
     this.live = new Set();
     this.lists = [
-      { arr: level.notes, kind: 'gpu', y: 1.15 },
-      { arr: level.rings, kind: 'ring', y: 2.7 },
+      { arr: level.notes, kind: 'gpu', y: ITEM.gpuY },
+      { arr: level.rings, kind: 'ring', y: ITEM.ringY },
       { arr: level.hazards, kind: 'hazard', y: 0 },
-      { arr: level.powerups, kind: 'power', y: 1.4 },
+      { arr: level.powerups, kind: 'power', y: ITEM.powerY },
     ];
     this.cursors = this.lists.map(() => 0);
   }
@@ -183,7 +185,7 @@ export class Entities {
   /** add an extra item (compute rain, hallucinations) outside the level lists */
   addItem(it, kind) {
     const l = this.lists.find((x) => x.kind === kind);
-    this.spawnItem(it, kind, l ? l.y : 1.15);
+    this.spawnItem(it, kind, l ? l.y : ITEM.gpuY);
   }
 
   update(songTime, dt, beatPhase) {
@@ -203,7 +205,7 @@ export class Entities {
     for (const it of this.live) {
       const o = it.obj;
       const zf = it.t * SPEED;
-      if (zf < songTime * SPEED - 8) { this._release(it); continue; } // behind the camera
+      if (zf < songTime * SPEED - 2.5) { this._release(it); continue; } // passed the kart (the v3 camera is only ~5.6 m behind)
       it.stateT += dt;
       // collected things ride along with the kart so the camera never drives into them
       if (it.state === 'got') it.dz = (songTime - it.t) * SPEED;
@@ -216,45 +218,45 @@ export class Entities {
       if (it.kind === 'gpu') {
         const card = o.userData.card;
         if (it.state === 'live') {
-          o.position.y += Math.sin(songTime * 4 + it.t) * 0.15;
+          o.position.y += Math.sin(songTime * 4 + it.t) * 0.1;
           card.rotation.z = Math.sin(songTime * 3 + it.t * 2) * 0.35;
           const pulse = 1 + 0.12 * Math.pow(1 - beatPhase, 3);
-          o.scale.setScalar(1.3 * pulse * (it.fake ? 0.9 : 1));
+          o.scale.setScalar(GS * pulse * (it.fake ? 0.9 : 1));
           o.userData.disc.visible = true;
           card.children.forEach((ch) => { if (ch.userData.fan) ch.rotation.y += dt * 18; });
         } else if (it.state === 'got') {
           // pop: squash up and vanish
           const k = it.stateT / 0.25;
           if (k >= 1) { this._release(it); it.done = true; continue; }
-          o.position.y += k * 4.5;
+          o.position.y += k * 2.6;
           o.userData.disc.visible = false;
-          const sq = 1.3 * (1 - k * 0.85);
+          const sq = GS * (1 - k * 0.85);
           o.scale.set(sq * (1 + 0.3 * Math.sin(k * 9)), sq, sq);
         } else if (it.state === 'missed') {
           // sad deflate
           const k = Math.min(1, it.stateT / 0.5);
           o.userData.disc.visible = false;
-          o.scale.set(1.3 * (1 + k * 0.3), 1.3 * Math.max(0.05, 1 - k), 1.3 * (1 + k * 0.3));
-          o.position.y -= k * 0.9;
+          o.scale.set(GS * (1 + k * 0.3), GS * Math.max(0.05, 1 - k), GS * (1 + k * 0.3));
+          o.position.y -= k * 0.6;
         }
       } else if (it.kind === 'ring') {
         o.rotation.z = songTime * 1.5;
         if (it.state === 'live') {
           const pulse = 1 + 0.1 * Math.pow(1 - beatPhase, 3);
-          o.scale.setScalar(pulse);
+          o.scale.setScalar(RK * pulse);
         } else if (it.state === 'got') {
           const k = it.stateT / 0.35;
           if (k >= 1) { this._release(it); it.done = true; continue; }
-          o.scale.setScalar(1 + k * 1.5);
+          o.scale.setScalar(RK * (1 + k * 1.5));
         } else if (it.state === 'missed') {
           const k = Math.min(1, it.stateT / 1);
-          o.position.y += k * 2;
-          o.position.x += k * (it.x > 0 ? 3 : -3);
-          o.scale.setScalar(1 - k * 0.6);
+          o.position.y += k * 1.4;
+          o.position.x += k * (it.x > 0 ? 2 : -2);
+          o.scale.setScalar(RK * (1 - k * 0.6));
         }
       } else if (it.kind === 'hazard') {
         const w = it.w * LANE * 2;
-        o.scale.set(w / BASE, 1, 1);
+        o.scale.set(w / BASE, ITEM.hazardH, 1);
         // sit flat on the road, facing the driver
         o.traverse((ch) => {
           if (ch.userData.spin) ch.rotation.z = -songTime * 6;
@@ -271,11 +273,12 @@ export class Entities {
         o.userData.icon.rotation.y = songTime * 2.5;
         o.userData.cage[0].rotation.x = songTime * 2;
         o.userData.cage[1].rotation.y = songTime * 2;
-        o.position.y += Math.sin(songTime * 3) * 0.25;
+        o.position.y += Math.sin(songTime * 3) * 0.15;
+        o.scale.setScalar(PS);
         if (it.state === 'got') {
           const k = it.stateT / 0.3;
           if (k >= 1) { this._release(it); it.done = true; continue; }
-          o.scale.setScalar(1 + k * 2);
+          o.scale.setScalar(PS * (1 + k * 2));
         }
       }
     }

@@ -1,0 +1,650 @@
+[
+ {
+  "id": "001",
+  "file": "001_mario-bros-circuit_desert-start-straight.png",
+  "state": "driving straight, BOOSTING (rear flames) and trailing a held Boo item; camera pulled back vs normal",
+  "player_kart": {
+   "bbox": {
+    "x0": 638,
+    "x1": 845,
+    "y0": 422,
+    "y1": 655
+   },
+   "kart_width_px": 190,
+   "wheel_contact_y": 652,
+   "driver_head_top_y": 422,
+   "bbox_height_px": 233,
+   "note": "rear tyres largely hidden by boost flames + Boo; width inferred from left tyre rim (x~645) mirrored about driver centre x~740. Driver cap ~84px wide vs ~100px in 002-004 -> ~0.85x scale (boost pull-back)."
+  },
+  "horizon_y": 262,
+  "vanishing_x": 1051,
+  "horizon_note": "intersection of left road edge (0->1140 line) and white dashed lane line; +/-6. Near-kerb tangent VP ~x935 (road bends gently right toward MARIOKART arch).",
+  "road": {
+   "left_edge_x_at_contact": -3510,
+   "left_extrapolated": true,
+   "right_edge_x_at_contact": 1040,
+   "road_width_px_at_kart": 4550,
+   "road_width_in_kart_widths": 24.0,
+   "check": "at y=348 on-screen measurement: 901px / 41.5px-per-kw = 21.7 kw (kerb bulges) -> start straight ~22-24 kw wide",
+   "kerb": "teal-green painted kerb 106px wide at kart row = 0.56 kw, then grey strip + white line (pit lane) beyond",
+   "lane_lines": "white dashed centre line ~0.1 kw wide; dashes ~10 kw long, gaps ~10 kw (ground-projected, f=641); dashed line sits ~9 kw from right kerb, ~13 kw from left edge",
+   "curvature": "straight, gentle right bend ahead (kerb drifts right); not a turn"
+  },
+  "rivals": [],
+  "objects": [
+   "MARIOKART arch: spans whole road (~22 kw) and ~80px tall vs 230px span -> ~7.5 kw ~= 6.5 kh tall",
+   "Pit garage roller doors ~4-5 kh tall; pit building ~7 kh; pit wall/lattice fence on left ~1.5-2 kh",
+   "Boo item trailing directly behind kart: ~0.55 kw wide (white sphere ~105px at kart row)",
+   "Boost flames: pink/purple/orange fireballs at each rear wheel, each ~0.4 kw, total plume ~1.1 kw wide; ember sparks ~5px"
+  ],
+  "camera": {
+   "pitch_deg_down": 13.3,
+   "camera_height_kw": 2.04,
+   "horizontal_dist_to_rear_contact_kw": 3.0,
+   "kart_height_kw": 1.26,
+   "elevation_angle_to_kart_deg": 34,
+   "horizon_pct_from_top": 32,
+   "sky_vs_ground": "horizon at 32% from top; ~25% of frame is actual sky (buildings occlude the rest above horizon); ground ~68%"
+  },
+  "style": {
+   "sky": "saturated cyan-blue with large bright white cumulus, soft volumes",
+   "haze": "mild warm haze on distant buildings; no heavy fog",
+   "lighting": "bright high sun from right/behind (kart shadow falls left-down), crisp but slightly soft shadows; large soft-edged building shadow band across road on left",
+   "materials": "grey asphalt with visible cracks, patch repairs, dark tyre streaks; painted kerb with wear",
+   "effects": "boost flames + embers; nothing else",
+   "grading": "warm, saturated, high clarity"
+  },
+  "confidence": "medium: horizon +/-6px, kart width +/-10px (occluded); boost frame so camera distance is ~15-20% larger than normal"
+ },
+ {
+  "id": "002",
+  "file": "002_mario-bros-circuit_desert-hairpin-pack.png",
+  "state": "turning left into a hairpin, kart yawed ~20 deg (3/4 rear view), riding the inner kerb; pack of rivals ahead",
+  "player_kart": {
+   "bbox": {
+    "x0": 595,
+    "x1": 845,
+    "y0": 432,
+    "y1": 678
+   },
+   "kart_width_px": 219,
+   "wheel_contact_y": 676,
+   "driver_head_top_y": 432,
+   "bbox_height_px": 244,
+   "note": "left rear tyre outer x~623, right rear tyre outer x~842 (yaw makes this ~2% under true width); shadow extends to y~700 left"
+  },
+  "horizon_y": 240,
+  "vanishing_x": 730,
+  "horizon_note": "rival-width solve gives 249 (Waluigi kart 62px @370 vs player 219 @676); far barrier base visible at y~252-258 forces horizon <= ~248; chosen 240 +/-8. No roll.",
+  "road": {
+   "left_edge_x_at_contact": 600,
+   "left_extrapolated": false,
+   "right_edge_x_at_contact": null,
+   "road_width_px_at_kart": null,
+   "road_width_in_kart_widths": "~20-25 (hairpin onto the wide main straight; far side outside frame / too close to horizon)",
+   "kerb": "inner kerb = wide flat red/white painted band ~2 kw wide (stripe blocks ~1.5-2 kw long), then ~0.4 kw white/grey concrete strip, then green band ~0.35 kw; kart drives on the green band",
+   "lane_lines": "far straight has white dashes ~0.1 kw wide",
+   "curvature": "hairpin (~180 deg left). Inner kerb radius roughly 10-15 kw (~7-11 kart lengths if length ~1.4 kw); goes straight ~8 kw ahead of kart then sweeps left"
+  },
+  "rivals": [
+   {
+    "who": "Waluigi (rear view, boosting)",
+    "bbox_w": 62,
+    "contact_y": 370
+   },
+   {
+    "who": "Nabbit-like (angled)",
+    "bbox_w": 65,
+    "contact_y": 382
+   },
+   {
+    "who": "Koopa/Yoshi kart (angled ~45deg)",
+    "bbox_w": 72,
+    "contact_y": 370
+   },
+   {
+    "who": "Yoshi green kart (side-on, incl. length)",
+    "bbox_w": 114,
+    "contact_y": 368
+   },
+   {
+    "who": "bike far-left (side-on)",
+    "bbox_w": 45,
+    "contact_y": 337
+   },
+   {
+    "who": "far kart",
+    "bbox_w": 25,
+    "contact_y": 318
+   },
+   {
+    "who": "tiny karts far left on straight",
+    "bbox_w": "~15-20",
+    "contact_y": "~295"
+   }
+  ],
+  "perspective_check": "w/(contact-h) with h=240: player 0.502, Waluigi 0.477 -> consistent within kart-model differences",
+  "objects": [
+   "Floodlight tower behind far straight: >10 kh (top cropped)",
+   "Flags on poles ~4-6 kh",
+   "Red-sand mesa terrace with signage ~5 kh above track",
+   "Crystal/gem debris shards around kart ~0.1-0.2 kw each (item-box burst)"
+  ],
+  "camera": {
+   "pitch_deg_down": 14.2,
+   "camera_height_kw": 1.9,
+   "horizontal_dist_to_rear_contact_kw": 2.5,
+   "kart_height_kw": 1.16,
+   "elevation_angle_to_kart_deg": 37,
+   "horizon_pct_from_top": 29,
+   "sky_vs_ground": "~28% sky (top), ~70% ground"
+  },
+  "style": {
+   "sky": "cyan sky, big soft white clouds, distant grey-blue mountains with atmospheric fade",
+   "haze": "moderate blue-grey distance haze on mountains",
+   "lighting": "bright sun, crisp kart shadow to lower-left, specular sparkles",
+   "materials": "sun-baked orange sand with fine grain, painted kerbs with scuffs, grey asphalt with tyre marks",
+   "effects": "rainbow crystal shards from item box, boost flames on rival, sparkle glints, light motion blur on near kerb",
+   "grading": "warm, high saturation, slight bloom"
+  },
+  "confidence": "medium-low for horizon (+/-8); kart width/contact good (+/-3)"
+ },
+ {
+  "id": "003",
+  "file": "003_desert-highway_mesa-truck-intermission.png",
+  "state": "driving straight in the shadow of a semi truck on the right; rival directly ahead",
+  "player_kart": {
+   "bbox": {
+    "x0": 621,
+    "x1": 840,
+    "y0": 431,
+    "y1": 680
+   },
+   "kart_width_px": 219,
+   "wheel_contact_y": 679,
+   "driver_head_top_y": 431,
+   "bbox_height_px": 249,
+   "note": "measured on contrast-enhanced crop; tyre bottoms 677-680"
+  },
+  "horizon_y": 329,
+  "vanishing_x": 708,
+  "horizon_note": "CONFLICTING: local road-surface lines (yellow edge + lane dashes) meet at (708,329); truck-side rib lines meet at (709,307); rival-width solve gives 343 (if Peach kart = Mario kart width). Road visibly rises in the distance (far road at y~295). Kart probably on a dip/downhill; treat this frame's horizon as unreliable for the camera model.",
+  "road": {
+   "left_edge_x_at_contact": -845,
+   "left_extrapolated": true,
+   "right_edge_x_at_contact": "not visible (truck occupies next lane)",
+   "dashed_lane_line_x_at_contact": 911,
+   "road_width_px_at_kart": 1756,
+   "road_width_in_kart_widths": "8.0 kw between left yellow edge line and dashed lane line (one lane+shoulder); full highway >16 kw",
+   "kerb": "yellow edge line ~0.15 kw wide; orange gravel shoulder with black/white checker paint strip (~0.3 kw cells) and guardrail",
+   "lane_lines": "white dashes, worn/irregular",
+   "curvature": "straight; road dips then climbs in distance"
+  },
+  "rivals": [
+   {
+    "who": "pink-bow kart (Peach-like), rear view",
+    "bbox_w": 55,
+    "contact_y": 428,
+    "bbox_y0": 372
+   },
+   {
+    "who": "rival on fire behind truck",
+    "bbox_w": "~40",
+    "contact_y": "~352"
+   }
+  ],
+  "objects": [
+   "Semi-truck tyre diameter ~95px at contact row 447 -> ~1.3 kw (~1.1 kh)",
+   "Trailer side >4 kh tall (top cropped), floor around camera height",
+   "Guardrail top ~1.1 kh above road (posts ~73px vs 56px kw at y=418)",
+   "Street lamps ~5-6 kh",
+   "Saguaro cacti 2-4 kh",
+   "Giant mesa/rock in distance"
+  ],
+  "camera": {
+   "pitch_deg_down": 7.2,
+   "camera_height_kw": 1.59,
+   "horizontal_dist_to_rear_contact_kw": 2.75,
+   "kart_height_kw": 1.15,
+   "note": "numbers relative to local road plane (h=329); if true horizon ~307 -> camH 1.68 kw",
+   "horizon_pct_from_top": 40,
+   "sky_vs_ground": "~38% sky/background, ~60% ground"
+  },
+  "style": {
+   "sky": "cyan->pale gradient with soft clouds",
+   "haze": "STRONG warm dusty haze: distant mesas/road washed to beige; fog starts ~30 kw",
+   "lighting": "low-ish warm sun; truck casts huge hard-edged shadow over player (sharp penumbra ~5px)",
+   "materials": "very grainy asphalt aggregate (high-frequency noise), worn paint",
+   "effects": "distant explosion/fire glow with bloom",
+   "grading": "warm orange/teal split"
+  },
+  "confidence": "kart measurements high; horizon low (see note)"
+ },
+ {
+  "id": "004",
+  "file": "004_city-underpass_rainstorm-weather.png",
+  "state": "driving straight in heavy rain under an overpass",
+  "player_kart": {
+   "bbox": {
+    "x0": 623,
+    "x1": 842,
+    "y0": 436,
+    "y1": 690
+   },
+   "kart_width_px": 217,
+   "wheel_contact_y": 683,
+   "driver_head_top_y": 436,
+   "bbox_height_px": 247,
+   "note": "tyres in dark wet shadow + spray; contact +/-8"
+  },
+  "horizon_y": 237,
+  "vanishing_x": 691,
+  "horizon_note": "four parallel yellow centre lines fitted from pixel detection meet at (691,237) within 3px - most reliable horizon in batch",
+  "road": {
+   "left_edge_x_at_contact": "not visible (opposite lanes)",
+   "right_edge_x_at_contact": 2243,
+   "right_extrapolated": true,
+   "inner_double_yellow_x_at_contact": 433,
+   "road_width_px_at_kart": 1810,
+   "road_width_in_kart_widths": "lane = 8.4 kw (double-yellow to right white line; white line extrapolated and not quite parallel -> low conf)",
+   "kerb": "none visible",
+   "lane_lines": "double-yellow lines are THICK: each 0.29 kw wide, pair centre spacing 0.49 kw; two double-yellow pairs ~2.3 kw apart (median)",
+   "curvature": "straight"
+  },
+  "rivals": [],
+  "objects": [
+   "Overpass deck overhead (underside at top of frame)",
+   "Lamp post ~5 kh",
+   "Tilted panel/billboard in road ~2.5 kh",
+   "Coins far left floating ~0.4 kw"
+  ],
+  "camera": {
+   "pitch_deg_down": 15.1,
+   "camera_height_kw": 2.0,
+   "horizontal_dist_to_rear_contact_kw": 2.55,
+   "kart_height_kw": 1.2,
+   "elevation_angle_to_kart_deg": 38,
+   "horizon_pct_from_top": 29,
+   "sky_vs_ground": "no sky (underpass); ground ~71%"
+  },
+  "style": {
+   "sky": "none - bright overcast glow through underpass opening",
+   "haze": "heavy grey-olive rain fog, contrast falls off within ~20 kw",
+   "lighting": "flat overcast, light shaft through opening, kart in dark wet shadow",
+   "materials": "wet asphalt with glittering specular aggregate, puddle sheen",
+   "effects": "rain streaks ~60-100px long diagonal, white water spray from tyres ~1 kw wide cloud, droplets on screen",
+   "grading": "desaturated olive/grey, low contrast"
+  },
+  "confidence": "horizon high (+/-3); kart width high; contact medium"
+ },
+ {
+  "id": "005",
+  "file": "005_crown-city_solar-rooftops-crane-skytrack.png",
+  "state": "drifting/yawed ~35 deg on a solar-panel rooftop, BOOSTING; Mario wearing crown item; camera yawed so kart seen from rear-right side",
+  "player_kart": {
+   "bbox": {
+    "x0": 285,
+    "x1": 522,
+    "y0": 357,
+    "y1": 670
+   },
+   "kart_width_px": 205,
+   "wheel_contact_y": 665,
+   "driver_head_top_y": 357,
+   "bbox_height_px": 313,
+   "note": "width = rear track foreshortened by yaw; head top is the crown (cap ~395); boost flames extend to x~165"
+  },
+  "horizon_y": 198,
+  "vanishing_x": 739,
+  "horizon_note": "from square solar-cell grid: column VP (739,197), diagonal VPs (71,176) and (1420,221) -> horizon tilted ~1.9 deg (right side lower). The two diagonal families are each 45.0+/-0.2 deg from columns at f=641px => vFOV 65.1, hFOV 97.3 (assumes principal point at centre, square cells; frame during boost)",
+  "road": {
+   "left_edge_x_at_contact": "off-screen",
+   "right_edge_x_at_contact": 947,
+   "road_width_in_kart_widths": "rooftop surface >5 kw; solar cells ~0.22 kw squares",
+   "curvature": "rooftop platform, sky track curves overhead"
+  },
+  "rivals": [],
+  "objects": [
+   "Red construction crane ~>15 kh",
+   "Camera drones carrying banners ~0.6 kw",
+   "Church/clock tower spire far below-right",
+   "Yellow ramp/rail supports ahead ~2 kh"
+  ],
+  "camera": {
+   "pitch_deg_down": 18.3,
+   "camera_height_kw": 2.16,
+   "horizontal_dist_to_rear_contact_kw": 2.6,
+   "horizon_pct_from_top": 24,
+   "sky_vs_ground": "sky ~45% (right half open sky over city), roof ~55%"
+  },
+  "style": {
+   "sky": "clean saturated blue, big white cumulus",
+   "haze": "VERY strong aerial perspective toward the city/sea below: near-white",
+   "lighting": "bright sun, specular reflections on panels",
+   "materials": "glossy blue solar panels with white grid",
+   "effects": "boost fireballs ~0.5 kw each, purple glow",
+   "grading": "bright, cool, high key"
+  },
+  "confidence": "FOV derivation high for this frame (geometry self-consistent); kart numbers low (yawed/drifting)"
+ },
+ {
+  "id": "006",
+  "file": "006_desert-railyard_sandstorm-glider.png",
+  "state": "GLIDING (glider wings out), banked ~40 deg left, high above railyard",
+  "player_kart": {
+   "bbox": {
+    "x0": 510,
+    "x1": 775,
+    "y0": 388,
+    "y1": 700
+   },
+   "kart_width_px": null,
+   "wheel_contact_y": null,
+   "driver_head_top_y": 440,
+   "note": "airborne; kart body w/o wings x540-740 y440-665; wingspan ~265px"
+  },
+  "horizon_y": 231,
+  "vanishing_x": 762,
+  "horizon_note": "central track's two rails meet at (762,231); +/-15",
+  "road": {
+   "road_width_in_kart_widths": null,
+   "note": "railyard: many parallel tracks with sand between, long dark shadow stripes along tracks",
+   "curvature": "straight"
+  },
+  "rivals": [],
+  "objects": [
+   "Overhead gantry crane spanning tracks",
+   "Lamp posts",
+   "Lakitu with lap board",
+   "Track sleepers"
+  ],
+  "camera": {
+   "pitch_deg_down": "~15",
+   "horizon_pct_from_top": 28,
+   "sky_vs_ground": "~30% sky, ~70% ground"
+  },
+  "style": {
+   "sky": "dark cloud band over pale cyan, sandstorm",
+   "haze": "heavy brown sand haze, background silhouettes",
+   "lighting": "diffuse with long stripe shadows",
+   "effects": "sand/rain streaks across frame",
+   "grading": "sepia, desaturated, low contrast"
+  },
+  "confidence": "low (airborne, banked)"
+ },
+ {
+  "id": "007",
+  "file": "007_bowsers-castle_green-industrial-control-corridor.png",
+  "state": "Koopa on a BIKE, boosting, heading up-right in a wide corridor",
+  "player_kart": {
+   "bbox": {
+    "x0": 630,
+    "x1": 800,
+    "y0": 410,
+    "y1": 690
+   },
+   "kart_width_px": 110,
+   "wheel_contact_y": 685,
+   "driver_head_top_y": 410,
+   "bbox_height_px": 275,
+   "note": "BIKE: 110px = handlebar/footpeg span, not comparable to kart wheel width; rear wheel ~35px wide"
+  },
+  "horizon_y": 262,
+  "vanishing_x": 900,
+  "horizon_note": "floor seam lines (Hough) converge around (880-980, 250-268); +/-12",
+  "road": {
+   "road_width_in_kart_widths": ">15 (corridor wall-to-wall, low confidence)",
+   "curvature": "straight corridor, camera yawed"
+  },
+  "rivals": [
+   {
+    "who": "green rider on bike far ahead",
+    "bbox_w": 25,
+    "contact_y": 297
+   }
+  ],
+  "objects": [
+   "Glowing floor light panels ~1.5 x 0.6 kw",
+   "Control-panel walls ~5 kh",
+   "BOWSER MOTORS sign at corridor end"
+  ],
+  "camera": {
+   "horizon_pct_from_top": 32,
+   "sky_vs_ground": "no sky; ground ~68%"
+  },
+  "style": {
+   "sky": "none (indoor)",
+   "haze": "teal volumetric fog",
+   "lighting": "emissive panels, glow",
+   "effects": "orange spark particles ~5-15px streaks, star sparkle with bloom, boost flames",
+   "grading": "strong monochrome teal-green"
+  },
+  "confidence": "low-medium"
+ },
+ {
+  "id": "008",
+  "file": "008_great-block-ruins_jungle-temple-stone-road.png",
+  "state": "Wiggler on an off-road buggy, drifting left with triple mushrooms orbiting; road banked",
+  "player_kart": {
+   "bbox": {
+    "x0": 556,
+    "x1": 842,
+    "y0": 357,
+    "y1": 754
+   },
+   "kart_width_px": 275,
+   "wheel_contact_y": 752,
+   "driver_head_top_y": 398,
+   "bbox_height_px": 397,
+   "note": "buggy with big tyres; flower top 357; kart yawed ~15 deg so we see left side; dust hides left tyre bottom"
+  },
+  "horizon_y": 200,
+  "vanishing_x": 715,
+  "horizon_note": "kerb + gold-strip lines converge ~(715,198); rival width solve 206. Road surface banked so road-plane horizon rolls ~5-10 deg",
+  "road": {
+   "left_edge_x_at_contact": 330,
+   "right_edge_x_at_contact": ">1549 (gold strip; more road beyond)",
+   "right_extrapolated": true,
+   "road_width_in_kart_widths": ">=4.4 to gold strip, ~8 total (est)",
+   "kerb": "raised golden lattice rail kerb ~1 kw",
+   "curvature": "medium left curve"
+  },
+  "rivals": [
+   {
+    "who": "small red kart ahead",
+    "bbox_w": 22,
+    "contact_y": 250
+   },
+   {
+    "who": "Bowser on bike, spin attack",
+    "bbox_w": 70,
+    "contact_y": 355
+   }
+  ],
+  "objects": [
+   "Row of ~7 item boxes across road far ahead (y~168-185)",
+   "Mushrooms orbiting kart ~0.36 kw diameter",
+   "Palm trees ~6-8 kh",
+   "Temple block wall >10 kh"
+  ],
+  "camera": {
+   "pitch_deg_down": 18.1,
+   "camera_height_kw": 1.91,
+   "horizontal_dist_to_rear_contact_kw": 1.83,
+   "note": "drift/yaw distorts; buggy wider than standard kart so kw-normalised numbers are biased low",
+   "horizon_pct_from_top": 24,
+   "sky_vs_ground": "~20% sky (top-left), ground/scenery ~80%"
+  },
+  "style": {
+   "sky": "blue with white clouds",
+   "haze": "light",
+   "lighting": "hard tropical sun, crisp shadows of rivals/trees on stone",
+   "materials": "golden sandstone bricks with moss and cracks",
+   "effects": "drift dust cloud ~0.7 kw, speed whoosh rings around Bowser",
+   "grading": "warm, saturated"
+  },
+  "confidence": "medium-low"
+ },
+ {
+  "id": "009",
+  "file": "009_dino-dino-jungle_dirt-track-geysers-towers.png",
+  "state": "Piranha Plant player (ringed on minimap) in a pile-up: rival Bowser Jr near-left, item box burst in front of camera",
+  "player_kart": {
+   "bbox": {
+    "x0": 660,
+    "x1": 860,
+    "y0": 320,
+    "y1": 655
+   },
+   "kart_width_px": 130,
+   "wheel_contact_y": 650,
+   "driver_head_top_y": 320,
+   "bbox_height_px": 335,
+   "note": "heavily occluded; vehicle appears narrow; low confidence"
+  },
+  "horizon_y": 175,
+  "vanishing_x": 760,
+  "horizon_note": "dirt-track edges toward start gate; +/-15",
+  "road": {
+   "road_width_in_kart_widths": "~8-10 (est)",
+   "curvature": "gentle"
+  },
+  "rivals": [
+   {
+    "who": "Bowser Jr kart near-left",
+    "bbox_w": 270,
+    "contact_y": 785
+   },
+   {
+    "who": "spun-out rival",
+    "bbox_w": 125,
+    "contact_y": 480
+   },
+   {
+    "who": "far karts near gate",
+    "bbox_w": 20,
+    "contact_y": 218
+   }
+  ],
+  "objects": [
+   "Item box (breaking) ~0.45 kw",
+   "Water geysers ~3 kh",
+   "MARIO KART gate banner far",
+   "Bullet-bill/egg props ~1 kh"
+  ],
+  "camera": {
+   "horizon_pct_from_top": 21,
+   "sky_vs_ground": "~10% sky"
+  },
+  "style": {
+   "sky": "little sky, blue",
+   "lighting": "bright sun, dark dappled shadows",
+   "effects": "item-box flash with star particles 30-60px, strong bloom",
+   "grading": "saturated orange dirt / green jungle"
+  },
+  "confidence": "low"
+ },
+ {
+  "id": "010",
+  "file": "010_shy-guy-bazaar_sandstone-market-street.png",
+  "state": "player INVISIBLE (Boo item -> dithered transparency), on a bike, arm out (trick?)",
+  "player_kart": {
+   "bbox": {
+    "x0": 628,
+    "x1": 803,
+    "y0": 333,
+    "y1": 589
+   },
+   "kart_width_px": 60,
+   "wheel_contact_y": 585,
+   "driver_head_top_y": 333,
+   "bbox_height_px": 256,
+   "note": "bike rear-wheel span only; dithered"
+  },
+  "horizon_y": 290,
+  "vanishing_x": 550,
+  "horizon_note": "street ledge lines; +/-15; camera yawed vs street",
+  "road": {
+   "road_width_in_kart_widths": "~15 between raised side ledges (assumes kart-px ratio 0.48)",
+   "curvature": "gentle"
+  },
+  "rivals": [
+   {
+    "who": "blue rider ahead",
+    "bbox_w": 23,
+    "contact_y": 346
+   },
+   {
+    "who": "far rider",
+    "bbox_w": 14,
+    "contact_y": 310
+   }
+  ],
+  "objects": [
+   "Coin being collected ~75px ~0.4 kw",
+   "Boo ghost ahead",
+   "Market arch/banner far",
+   "Sandstone buildings 6-10 kh"
+  ],
+  "camera": {
+   "horizon_pct_from_top": 35,
+   "sky_vs_ground": "~25% sky"
+  },
+  "style": {
+   "sky": "warm hazy overcast peach",
+   "haze": "warm bloom haze",
+   "lighting": "soft, low contrast",
+   "materials": "large sandstone flagstones with cracks",
+   "effects": "Boo dither, sparkle, item bubble HUD",
+   "grading": "peach/orange, lifted blacks"
+  },
+  "confidence": "low"
+ },
+ {
+  "id": "011",
+  "file": "011_wario-stadium_pink-scrapyard-dirt-jump.png",
+  "state": "Wario on a bike AIRBORNE (feather jump) going up a dirt ramp",
+  "player_kart": {
+   "bbox": {
+    "x0": 668,
+    "x1": 821,
+    "y0": 318,
+    "y1": 611
+   },
+   "kart_width_px": 90,
+   "wheel_contact_y": null,
+   "driver_head_top_y": 318,
+   "bbox_height_px": 293,
+   "note": "airborne: wheel bottom 611, shadow on ramp ~y680-790"
+  },
+  "horizon_y": 292,
+  "vanishing_x": 700,
+  "horizon_note": "side wall rails/fence lines converge ~(678,294); ramp-plane edges converge at (731,39) -> ramp incline ~20 deg with f=641",
+  "road": {
+   "left_edge_x_at_contact": 158,
+   "right_edge_x_at_contact": 1068,
+   "road_width_px_at_kart": 910,
+   "road_width_in_kart_widths": "~10 bike widths (no kart scale); ramp crest 375px wide at y=295",
+   "lane_lines": "white dashes ~15px wide, ~125px long near kart",
+   "curvature": "straight ramp"
+  },
+  "rivals": [],
+  "objects": [
+   "Coins at crest ~26px diameter, 171px apart",
+   "Pink scrapyard fence walls ~4-6 kh",
+   "Lakitu lap board"
+  ],
+  "camera": {
+   "horizon_pct_from_top": 36,
+   "sky_vs_ground": "~12% sky"
+  },
+  "style": {
+   "sky": "blue with white cloud",
+   "lighting": "bright sun, crisp shadow of bike on ramp",
+   "materials": "dirt with pebbles, painted pink wood",
+   "effects": "small boost flames ~0.3 bike-widths",
+   "grading": "saturated pink/cyan/orange"
+  },
+  "confidence": "low-medium"
+ }
+]

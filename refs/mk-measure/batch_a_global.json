@@ -1,0 +1,11 @@
+{
+ "frame": [
+  1456,
+  819
+ ],
+ "focal_px_from_image005_square_grid": 641,
+ "vfov_deg": 65.1,
+ "hfov_deg": 97.3,
+ "kw": "kart widths (rear wheel-to-wheel outer width of the player's standard kart)",
+ "kh": "kart heights (kart+driver, ~1.17 kw for Mario on the standard kart)"
+}
