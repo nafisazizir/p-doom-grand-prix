@@ -116,7 +116,7 @@ async function boot() {
   track = new Track(scene, sections, R);
   kart = new Kart(scene);
   rivals = new Rivals(scene, track);
-  globalThis.__dbg = { get camera() { return camera; }, get kart() { return kart; }, get track() { return track; }, get rivals() { return rivals; }, CAM, measure, propSizes };
+  globalThis.__dbg = { get camera() { return camera; }, get kart() { return kart; }, get track() { return track; }, get rivals() { return rivals; }, CAM, measure, propSizes, THREE, get photo() { return photo; } };
   particles = new Particles(scene);
   smoke = new Smoke(scene);
   globalThis.__fx = { particles, smoke }; // effects debugging (CDP tests)

@@ -136,7 +136,15 @@ export class Track {
     // match the banked road edge, fading back to level ground further out
     const edge = Math.sign(lat) * Math.min(a, H + KERB_W);
     const bankY = f.ry * edge * (a <= H + 4 ? 1 : Math.max(0, 1 - (a - H - 4) / 30));
-    return f.y + bankY + emb + this._hills(s, lat, look);
+    const y = f.y + bankY + emb + this._hills(s, lat, look);
+    // just past the clifftop the coastline carries on: the sea side slopes down to the water instead of a big dune
+    this._cliffF ??= this.course.features.find((ff) => ff.type === 'cliff') || false;
+    const cf = this._cliffF;
+    if (cf && s >= cf.s[1] && s < cf.s[1] + 260 && Math.sign(lat) === cf.side && a > H + 6) {
+      const u = 1 - smooth((s - cf.s[1]) / 260), w = smooth(Math.min(1, (a - H - 6) / 26));
+      return y + (f.y - 58 - y) * u * w;
+    }
+    return y;
   }
 
   // ---------- static geometry ----------
@@ -740,6 +748,10 @@ export class Track {
     const isBB = p.kind.startsWith('__bb:');
     // features decide what can exist here
     if (feats.jump) return;
+    // keep the clifftop sea view open: just past the cliff, nothing big on the sea side (it would sit across the water)
+    this._cliffF ??= C.features.find((f) => f.type === 'cliff') || false;
+    const cf = this._cliffF;
+    if (cf && zf >= cf.s[1] && zf < cf.s[1] + 240 && Math.sign(lat) === cf.side && Math.abs(lat) > H + 14 && (p.y || 0) < 6) return;
     if (feats.tunnel && Math.abs(lat) > TUNNEL_W - 1.5 && !overhead) return;
     if (feats.tunnel && overhead && (p.y || 0) > 15) return;
     let baseY = null;

@@ -28,7 +28,8 @@ const T_CLIFF = 88.4;
 // v3: the desert inherits the atmosphere pass's 'badlands' entry in looks.js (sky, haze, clouds, far mesas, fog). The
 // clifftop only swings the low sun out over the sea on the left, so the sunset sits over the ocean.
 const DESERT_LOOK = {};
-const CLIFF_LOOK = { sun: { elev: 9, azim: -104, color: '#ffb35c', intensity: 3.6 } };
+// v3 QA: thinner haze with less sun in-scatter over the sea, so the ocean reads blue instead of washing to beige sand
+const CLIFF_LOOK = { sun: { elev: 12, azim: -78, color: '#ffb35c', intensity: 3.4 }, haze: { k: 0.42, sun: 0.45, desat: 0.12 } };
 /** the ground material spec the engine uses here (so the apron / dunes / hairpin floor match the terrain) */
 const groundSpec = () => ({ tex: 'sand', tint: '#e8b48a', scale: 7, ...(LOOKS.badlands?.ground || {}) });
 
