@@ -306,7 +306,7 @@ function updateCountdown(dt) {
     $('count-num').textContent = COUNT[step][0];
     $('count-gag').textContent = COUNT[step][1];
     const n = $('count-num');
-    n.classList.remove('pop'); void n.offsetWidth; n.classList.add('pop');
+    n.classList.remove('count-pop'); void n.offsetWidth; n.classList.add('count-pop');
     sfx.play(step === 3 ? 'go' : 'tick');
   }
   if (countdownT >= 0.75 * 3.4) beginRace(raceFrom);

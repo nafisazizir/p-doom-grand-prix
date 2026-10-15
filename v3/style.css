@@ -127,7 +127,7 @@ button.alt { background: #c8b8ff; }
 #cal-status { font-size: 26px; font-weight: 600; text-shadow: 0 3px 0 var(--ink); }
 
 #count-num { font-weight: 700; font-size: 220px; color: var(--yellow); -webkit-text-stroke: 8px var(--ink); paint-order: stroke fill; text-shadow: 0 12px 0 var(--ink); line-height: 1; }
-#count-num.pop { animation: countpop 0.45s; }
+#count-num.count-pop { animation: countpop 0.45s; }
 @keyframes countpop { 0% { transform: scale(2.2); opacity: 0; } 60% { transform: scale(0.9); opacity: 1; } }
 #count-gag { font-weight: 700; font-size: 40px; -webkit-text-stroke: 3px var(--ink); paint-order: stroke fill; text-shadow: 0 4px 0 var(--ink); }
 
