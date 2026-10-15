@@ -359,7 +359,7 @@ function personIn(k, p, v, part, opts) {
 
 
 // ================================================================================================
-// props (v3 world scale: kart+driver ≈ 1.86 tall. Targets from tools/V3_BRIEF.md)
+// props (v3 world scale: kart+driver ≈ 1.86 tall)
 // ================================================================================================
 /** a crowd of cardboard spectators on a stepped stand. Built along x, crowd faces +z. ~10.3 tall at layout scale 1.35 */
 function grandstand(v = 0) {

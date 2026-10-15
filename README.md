@@ -1,64 +1,71 @@
-# P(DOOM) GRAND PRIX
+# P(DOOM) Grand Prix
 
-A webcam-steered kart rhythm game set to "I'm Upping My P(Doom)". Hold an invisible steering wheel, drive through the GPUs on the beat, fly through halos, and save humanity.
+A webcam-steered kart rhythm game set to "I'm Upping My P(Doom)". Hold an invisible steering wheel, drive through the GPUs on the beat, save humanity.
 
-## Run it (offline)
+Built with three.js and MediaPipe hand tracking. Runs entirely in the browser, offline.
+
+## Getting Started
 
 ```bash
 python3 -m http.server 8000
-# open http://localhost:8000 in Chrome (webcam only works on localhost / https)
 ```
 
-Everything is vendored in `vendor/` (three.js r186, MediaPipe Tasks Vision 0.10.35 plus the hand model, and the Fredoka and Baloo 2 fonts). No network is needed at runtime.
+Open http://localhost:8000 in Chrome. Webcam access requires `localhost` or HTTPS.
 
-## Two versions
+All dependencies are vendored in `vendor/` (three.js r186, MediaPipe Tasks Vision 0.10.35, Fredoka and Baloo 2 fonts). No build step, no network at runtime.
 
-- **v1 (classic):** `http://localhost:8000/`. Toon-shaded, a straight-ish road, the original build.
-- **v2 (realistic):** `http://localhost:8000/v2/`. A Mario-Kart-World-style overhaul:
-  - **Rendering:** realistic (PBR) materials, sky-based (HDRI) lighting, soft sun shadows, ambient occlusion, bloom and physical skies.
-  - **Course:** a real 3D track with turns, hills, banking, an elevated highway, bridges over water, data-centre tunnels, a rainbow road into space, an "AGI WINGS" glide back down, the hairpin on "sharp left turn", a cliff over the ocean, a banked stadium and a launch ramp.
-  - **Rival karts:** OpenSauce, DeepMined, PAUSE KART and e/acc.
-  - **Jokes:** an AI driving assistant that comments on your driving, live billboards that roast your actual stats, and four extra hazards.
-  - **Shared code:** v2 uses the same song, beatmap, hand tracking and input as v1 (`src/`); its own renderer, course and art live in `v2/src/`.
-  - **Quality:** `?quality=low|med|high|ultra` (default high; it steps down automatically if FPS drops), or press **O** to cycle.
+## Versions
 
-- **v3 (world scale):** `http://localhost:8000/v3/`. v2 rebuilt around Mario Kart World's proportions, measured from 33 MKW stills (`PLAN-V3.md`, raw numbers in `refs/mk-measure/`):
-  - **Camera:** the MK chase camera, solved from the stills: 58° FOV, 1.95 kart widths high, 13° pitch, horizon at 29% from the top.
-  - **Scale:** half-size karts in a full-size world. The road is ≈10 kart widths wide, and props are sized to MK's object table.
-  - **Corners:** MK-style corners and a real hairpin on "sharp left turn".
-  - **Atmosphere:** MK skies and haze, smoother effects, halos and obstacles.
-  - **Shared code:** v3's code lives in `v3/src/` (`scale.js` holds every scale constant). It shares the song, beatmap, hand tracking and input with v1 and v2.
-  - **Dev:** `__dbg.measure()` in the console prints the frame in MK terms (kart px, horizon y, road width in kart widths), and `__dbg.propSizes()` audits prop heights.
+| Path   | Description                                                                         |
+| ------ | ----------------------------------------------------------------------------------- |
+| `/`    | v1. Toon-shaded, original build.                                                    |
+| `/v2/` | v2. PBR materials, HDRI lighting, 3D course with turns, hills and jumps, rival karts. |
+| `/v3/` | v3. v2 rebuilt at Mario Kart World proportions: camera, kart, road and prop scale.  |
+
+v2 and v3 accept `?quality=low|med|high|ultra` (auto-steps down on low FPS). Press `O` to cycle.
 
 ## Controls
 
-| Input                  | What                                                    |
-| ---------------------- | ------------------------------------------------------- |
-| Both hands (webcam)    | Tilt an invisible steering wheel to steer               |
-| Both hands up high     | Boost (FEEL THE AGI)                                    |
-| ← → / A D, Space       | Keyboard steer / boost (always works, even in webcam mode) |
-| W                      | Toggle webcam steering mid-race                         |
-| Enter                  | Play (keyboard) from the title; retrain from results    |
+| Input               | Action                                |
+| ------------------- | ------------------------------------- |
+| Both hands (webcam) | Tilt to steer                         |
+| Both hands raised   | Boost                                 |
+| `←` `→` / `A` `D`   | Steer                                 |
+| `Space`             | Boost                                 |
+| `W`                 | Toggle webcam steering                |
+| `Enter`             | Play (keyboard) / retrain             |
+| `P`                 | Pause (v2/v3: drag to orbit, scroll to zoom) |
+| `H`                 | Hide HUD                              |
+| `Esc`               | Menu                                  |
 
-**Screenshots:** `P` (or the ⏸ button) pauses with only a tiny pill on screen · `H` hides the whole HUD · in v2, drag to orbit the camera around the kart while paused and scroll to zoom.
-**Dev keys:** `D` debug overlay · `1–9 0 - =` jump to sections 1–12 · `[ ]` latency ±10 ms · `P` pause · `G` god mode · `B` autopilot · `O` outlines on/off · `R` restart · `Esc` menu.
-**URL params:** `?section=N` (start in section N, keyboard) · `?autopilot` (bot drives; good for a backup recording) · `?debug` · `?tap=1` (press **S** to log section starts by ear).
+Dev keys: `D` debug overlay, `1`–`9` `0` `-` `=` jump to section 1–12, `[` `]` latency ±10 ms, `G` god mode, `B` autopilot, `R` restart.
 
-## Files
+URL params: `?section=N`, `?autopilot`, `?debug`.
 
-- `tools/analyze.py` re-runs the audio and lyric analysis: `.venv/bin/python tools/analyze.py`. It writes `assets/beatmap.json`, `assets/sections.json` and `assets/lyrics.lrc`.
-- `PLAN.md` holds the creative plan: the sections, themes, gags and the reasons behind them.
-- `assets/sections.json` sets each section's theme, density and hazard rate. Edit these to re-theme or re-balance (the theme ids are in `src/themes/index.js`).
-- `src/main.js` holds the game rules and the `TUNE` constants for P(doom) balance. v2's copy is `v2/src/main.js`.
-- `v2/src/course.js` defines the v2 track: pieces (turns and rises, timed to the song) and features (bridge, tunnel, rainbow, jump…).
-- `v2/src/looks.js` sets the per-theme lighting, sky and fog. The CC0 asset credits are in `assets/v2/CREDITS.md`.
+## Project Structure
 
-## Demo-day checklist
+```
+assets/          song, beatmap, lyrics, sections; v2/v3 textures, HDRIs, models
+src/             v1 game + shared audio, beatmap, hand tracking, input
+v2/src/          v2 renderer, course, themes
+v3/src/          v3 renderer, course, themes (scale constants in scale.js)
+tools/           offline audio + lyric analysis
+vendor/          three.js, MediaPipe, fonts
+```
 
-- [ ] Wifi off, reload, play a full run (everything is local).
-- [ ] Grant webcam permission in Chrome ahead of time.
-- [ ] Light: face the player towards a light source if tracking is flaky.
-- [ ] Laptop plugged in, notifications off, browser fullscreen (Cmd+Ctrl+F), volume checked through the venue speakers.
-- [ ] Press W mid-race to make sure the keyboard fallback works.
-- [ ] Backup video of a full run: `refs/backup-run.mp4`.
-- [ ] One-sentence pitch for volunteers: "Hold an invisible steering wheel, drive through the GPUs, save humanity."
+`assets/sections.json` sets each section's theme, density and hazard rate. Game balance lives in the `TUNE` constants in `src/main.js` (and `v2/src/main.js`, `v3/src/main.js`).
+
+## Regenerating the Beatmap
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r tools/requirements.txt
+.venv/bin/python tools/analyze.py   # beatmap.json, sections.json, lyrics.lrc
+.venv/bin/python tools/karaoke.py   # lyrics_words.json
+```
+
+## Credits
+
+- Song: "I'm Upping My P(Doom)" by Claude Pop.
+- Inspired by @RhysSullivan's P(doom) Beat Saber map.
+- v2/v3 textures, HDRIs and models: CC0 from ambientCG and Poly Haven. See [`assets/v2/CREDITS.md`](assets/v2/CREDITS.md).

@@ -2,5 +2,5 @@
 .venv/
 __pycache__/
 *.pyc
-refs/backup-run.mp4
-refs/backup-run-v2.mp4
+refs/
+assets/analysis_report.md

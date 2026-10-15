@@ -1,4 +1,4 @@
-// v3 world scale, measured from 33 Mario Kart World stills (see PLAN-V3.md, "Measurements").
+// v3 world scale, measured from 33 Mario Kart World stills.
 // Everything here is in world units. The road and the props keep v2's size; the karts shrink, so the
 // road reads ~11 kart widths wide (MK: 10–11 on normal roads) and buildings tower over you like in MK.
 //

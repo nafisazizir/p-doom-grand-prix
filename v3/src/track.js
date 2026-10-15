@@ -12,7 +12,7 @@ export const FAR = 330;
 const BEHIND = 30;
 const H = ROAD_HALF;
 const TUNNEL_W = H + 10;
-// MK proportions (PLAN-V3): kerbs 0.5–2 kw wide, lane dashes 0.1–0.2 kw wide, ≈10 kw long with ≈10 kw gaps
+// MK proportions: kerbs 0.5–2 kw wide, lane dashes 0.1–0.2 kw wide, ≈10 kw long with ≈10 kw gaps
 const KERB_W = 1.6, KERB_H = 0.2;
 const DASH = 16, DASH_W = 0.26, EDGE_IN = H - 0.62, EDGE_OUT = H - 0.34;
 
