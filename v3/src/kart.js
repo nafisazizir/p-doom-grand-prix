@@ -569,7 +569,7 @@ export class Kart {
     this.raysG.scale.set(1 + bop * 0.06, 1 + bop * 0.06, 1);
     this.spinRays = (this.spinRays || 0) + dt * s.boostK * 9;
     this.raysG.rotation.z = this.spinRays;
-    this.wheel.rotation.z = -s.steerVis * 1.6;
+    this.wheel.rotation.z = s.wheelTurn ?? -s.steerVis * 1.6;
     const steerA = clamp(s.steerVis || 0, -1, 1) * -0.32;
     for (let i = 0; i < this.wheels.length; i++) {
       const w = this.wheels[i];

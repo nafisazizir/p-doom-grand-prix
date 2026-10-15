@@ -2,11 +2,14 @@
 // Runs in its own requestVideoFrameCallback loop, independent of rendering.
 // Detection runs in a Web Worker (src/hands-worker.js); falls back to the main thread if the worker can't start.
 
-const DEAD = 6, MAX = 40;
+const DEAD = 4, MAX = 40;
 const GRACE_MS = 250; // a hand vanishing for a frame or two keeps your last steering
-const STEER_TAU = 0.07; // seconds: render-rate smoothing towards the latest reading
+const LEAD_MAX_MS = 45; // between detections, extrapolate the wheel angle at most this far past the last reading
+const OUT_TAU = 0.02; // seconds: tiny render-rate smoothing that hides each new reading's small correction
 
-// One Euro filter (Casiez et al.): heavy smoothing when still, light smoothing when moving fast.
+// One Euro filter (Casiez et al.): smooths jitter when still, gets out of the way when moving.
+// Tuned for degrees: ~0.5° of landmark jitter is invisible after the dead zone, so we lean hard towards
+// low latency (high beta, quick derivative) instead of heavy smoothing.
 class OneEuro {
   constructor(minCutoff = 1.2, beta = 0.015, dCutoff = 1.0) { this.minCutoff = minCutoff; this.beta = beta; this.dCutoff = dCutoff; this.x = null; this.dx = 0; this.t = 0; }
   static alpha(cutoff, dt) { const tau = 1 / (2 * Math.PI * cutoff); return 1 / (1 + tau / dt); }
@@ -22,7 +25,13 @@ class OneEuro {
   }
   reset() { this.x = null; this.dx = 0; }
 }
-const angleFilter = new OneEuro(1.2, 0.015, 1.0);
+const angleFilter = new OneEuro(2.5, 0.06, 2.5);
+
+/** wheel angle (deg) → steer ∈ [-1, 1]: soft dead zone that eases in, then near-linear to full lock at MAX */
+function steerFromDeg(deg) {
+  const u = Math.max(0, Math.min((Math.abs(deg) - DEAD) / (MAX - DEAD), 1));
+  return Math.sign(deg) * u * (0.75 + 0.25 * u);
+}
 
 export const hands = {
   ready: false,
@@ -36,7 +45,7 @@ export const hands = {
   _sentAt: 0,
   pts: [], // [{x,y}] palm centres (mirrored), sorted left→right
   lms: [], // raw mirrored landmark arrays for drawing
-  angleDeg: 0,
+  angleDeg: 0, // wheel angle as shown on screen (render-rate, latency-compensated once tick() runs)
   raw: 0,
   steer: 0,
   both: false,
@@ -44,7 +53,12 @@ export const hands = {
   boostGesture: false,
   _upSince: 0,
   detectMs: 0,
-  target: 0, // latest filtered steering reading; steer eases towards it every render frame
+  target: 0, // steering for the latest reading (steer itself is recomputed every render frame)
+  _angF: 0, // filtered angle at the last reading (deg)
+  _angV: 0, // its rate of change (deg/s), used to extrapolate between readings
+  _angT: 0, // when that reading arrived (performance.now ms); 0 = no reading yet
+  _out: 0, // render-rate output angle
+  _lastTick: -1e9,
   detectHz: 0,
   _detN: 0,
   _detT0: 0,
@@ -208,12 +222,14 @@ export const hands = {
       const L = this.pts[0], R = this.pts[this.pts.length - 1];
       const ang = Math.atan2(R.y - L.y, R.x - L.x); // image y down: right hand lower → +angle → steer right
       const deg = angleFilter.filter((ang * 180) / Math.PI, now);
-      this.angleDeg = deg;
-      const a = Math.abs(deg);
-      // soft dead zone: eases in instead of jumping from 0
-      const u = Math.max(0, Math.min((a - DEAD) / (MAX - DEAD), 1));
-      this.raw = Math.sign(deg) * u * (0.6 + 0.4 * u);
-      this.target = this.raw;
+      // rate of the *filtered* angle: extrapolating with it between readings also claws back the filter's lag
+      const dts = (now - this._angT) / 1000;
+      if (this._angT && dts > 0 && dts < 0.2) this._angV += ((deg - this._angF) / dts - this._angV) * 0.6;
+      else this._angV = 0;
+      this._angF = deg;
+      this._angT = now;
+      this.target = steerFromDeg(deg);
+      if (now - this._lastTick > 100) { this.angleDeg = this._out = deg; this.raw = this.target; } // no render tick (e.g. calibration)
       this.both = true;
       this.lastBoth = now;
       // boost gesture: both palms high in the frame for 200ms
@@ -228,19 +244,29 @@ export const hands = {
     }
   },
 
-  /** called every render frame: decay steer to 0 over ~300ms when hands are lost */
-  tick(dt) {
+  /** called every render frame: extrapolate the wheel angle between readings; ease back to straight when hands are lost */
+  tick(dt, now = performance.now()) {
     if (!this.ready) return;
-    const lost = performance.now() - this.lastBoth;
-    if (lost > GRACE_MS) {
+    this._lastTick = now;
+    const lost = now - this.lastBoth > GRACE_MS;
+    let goal;
+    if (lost) {
       // hands really gone: ease back to straight
       this.target = 0;
       this.both = false;
       angleFilter.reset();
+      this._angV = 0;
+      this._angT = 0;
+      goal = 0;
+    } else {
+      // detection runs at ~30 Hz; predict forward so the wheel moves every render frame instead of in steps
+      const lead = Math.max(0, Math.min(now - this._angT, LEAD_MAX_MS)) / 1000;
+      goal = this._angF + this._angV * lead;
     }
-    // render-rate smoothing so the kart glides at 60 fps even though detection runs at ~30
-    this.steer += (this.target - this.steer) * (1 - Math.exp(-dt / (lost > GRACE_MS ? 0.12 : STEER_TAU)));
-    if (Math.abs(this.steer) < 0.003 && this.target === 0) this.steer = 0;
+    this._out += (goal - this._out) * (1 - Math.exp(-dt / (lost ? 0.12 : OUT_TAU)));
+    if (lost && Math.abs(this._out) < 0.1) this._out = 0;
+    this.angleDeg = this._out;
+    this.raw = this.steer = steerFromDeg(this._out);
   },
 
   /** draw mirrored webcam + skeleton + palm dots into a 2D canvas */

@@ -930,6 +930,8 @@ function frame(now) {
   kart.setExpression(expr);
   kart.update({
     pos, quat: kartQuat, steerVel: mode === 'RACE' ? G.kartVel * 0.6 : 0, steerVis: G.steer, dt, t: now / 1000,
+    // webcam: the cockpit wheel mirrors your hands 1:1 (keyboard keeps the exaggerated steer-driven turn)
+    wheelTurn: mode === 'RACE' && !autopilot && input.usingHands() ? clamp(-hands.angleDeg, -90, 90) * (Math.PI / 180) : null,
     boostK, spinT: t < G.spinUntil ? 1 : 0, scaleK, shield: G.power === 'shield', shades: G.combo >= 50, beatPhase, launchK,
     glide: mode === 'RACE' && !!track.course.featuresAt(kartZ).jump?.glide,
     camPos: camera.position,

@@ -29,9 +29,14 @@ export const input = {
     // quick ramp so taps are gentle but holds are full lock
     const k = 1 - Math.exp(-dt * 14);
     this.kbSteer += (target - this.kbSteer) * k;
-    const kbActive = l || r;
-    if (kbActive || !this.webcam) return this.kbSteer;
+    if (!this.usingHands()) return this.kbSteer;
     return hands.steer;
+  },
+
+  /** true while the webcam wheel (not the keyboard) is steering */
+  usingHands() {
+    const kbActive = keys.has('ArrowLeft') || keys.has('KeyA') || keys.has('ArrowRight') || keys.has('KeyD');
+    return this.webcam && hands.ready && !kbActive;
   },
 
   /** steer with hazard effects applied. now = song time */
