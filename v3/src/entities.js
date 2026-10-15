@@ -12,6 +12,7 @@ export { glowSprite } from './particles.js';
 const GS = ITEM.gpuScale, RK = ITEM.ringR / 3.0, PS = ITEM.powerScale;
 
 const _fy = {};
+const _R = new THREE.Vector3(), _U = new THREE.Vector3(), _B = new THREE.Vector3(), _m = new THREE.Matrix4();
 const cache = new Map();
 const once = (key, make) => { let v = cache.get(key); if (!v) { v = make(); cache.set(key, v); } return v; };
 const easeOut = (k) => 1 - Math.pow(1 - k, 3);
@@ -341,7 +342,12 @@ export class Entities {
       if (it.kind === 'hazard') this.track.course.pos(zf + (it.dz || 0), x, it.baseY, o.position);
       else this.track.worldPos(zf + (it.dz || 0), x, it.baseY, o.position);
       o.scale.setScalar(1);
-      o.rotation.set(0, -this.track.course.frame(zf + (it.dz || 0), _fy).yaw, 0);
+      const fr = this.track.course.frame(zf + (it.dz || 0), _fy);
+      if (it.kind === 'hazard') {
+        // hazards stand on the road, so they take its full frame (heading, slope, banking): feet flush with the surface, square across it
+        _R.set(fr.rx, fr.ry, fr.rz); _U.set(fr.ux, fr.uy, fr.uz); _B.set(-fr.tx, -fr.ty, -fr.tz);
+        o.quaternion.setFromRotationMatrix(_m.makeBasis(_R, _U, _B));
+      } else o.rotation.set(0, -fr.yaw, 0);
       if (it.kind === 'gpu') {
         const card = o.userData.card, ud = o.userData;
         for (const f of ud.fans) f.rotation.y += dt * 16;
@@ -413,10 +419,10 @@ export class Entities {
           const side = it.x > 0 ? 1 : -1;
           const e = easeOut(k);
           o.position.y += 0.7 * Math.sin(Math.PI * Math.min(1, k * 1.3));
-          o.position.x += side * e * 2.6 * Math.cos(o.rotation.y);
-          o.position.z -= side * e * 2.6 * Math.sin(o.rotation.y);
-          o.rotation.x = -e * 1.25;
-          o.rotation.z = -side * e * 0.35;
+          o.position.x += side * e * 2.6 * fr.rx;
+          o.position.z += side * e * 2.6 * fr.rz;
+          o.rotation.x += -e * 1.25; // tilts on top of the road's slope/banking (YXZ order: in the road's frame)
+          o.rotation.z += -side * e * 0.35;
           const sh = 1 - smooth(Math.max(0, (k - 0.45) / 0.55));
           o.scale.set((w / BASE) * (sh * 0.85 + 0.15 * sh * sh), ITEM.hazardH * sh, sh);
         }
